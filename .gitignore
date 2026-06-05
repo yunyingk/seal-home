@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+*.log
+
+# Local enterprise configs can contain credentials.
+enterprises/*.json
+!enterprises/example.*.json
