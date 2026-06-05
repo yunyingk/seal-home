@@ -2,6 +2,7 @@ import { z } from "zod";
 import { KyInstance } from "ky";
 import * as api from "./api.js";
 import { CorpConfig } from "../../core/config/types.js";
+import { searchApprovalContent } from "./search.js";
 
 type ToolContext = {
   corp: CorpConfig;
@@ -160,6 +161,34 @@ export const sealTools = [
       const { documentId, ...rest } = params;
       return api.updateApprovalDocument(client, documentId, rest);
     }
+  },
+  {
+    name: "seal_approval_search",
+    description: "按关键词组检索 Seal 审批规则、审批文档和审批偏好配置，返回命中位置、字段、行号和前后三行上下文",
+    parameters: z.object({
+      keywords: z.array(z.string()).min(1).describe("关键词组"),
+      matchMode: z.enum(["any", "all"]).optional().describe("any 命中任一关键词，all 要求同一行命中全部关键词"),
+      areas: z.array(z.enum(["rules", "documents", "preferences"])).optional().describe("检索范围"),
+      caseSensitive: z.boolean().optional().describe("是否大小写敏感"),
+      contextLines: z.number().int().nonnegative().optional().describe("返回命中行前后几行，默认 3"),
+      documentLimit: z.number().int().positive().optional().describe("缓存刷新时最多拉取文档数，默认 100"),
+      maxResults: z.number().int().positive().optional().describe("最多返回命中数，默认 50"),
+      refresh: z.boolean().optional().describe("是否跳过 5 分钟内存缓存并强制刷新")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: {
+        keywords: string[];
+        matchMode?: "any" | "all";
+        areas?: Array<"rules" | "documents" | "preferences">;
+        caseSensitive?: boolean;
+        contextLines?: number;
+        documentLimit?: number;
+        maxResults?: number;
+        refresh?: boolean;
+      },
+      context: ToolContext
+    ) => searchApprovalContent(client, context.corp, params)
   },
   {
     name: "seal_approval_context_get",
