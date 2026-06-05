@@ -54,6 +54,12 @@ function defaultSealUrl(corp: CorpConfig, source: HoseSealSource): string {
   return `https://${source.corpId.toLowerCase()}.sealai.cc`;
 }
 
+function hoseUid(source: HoseSealSource): string {
+  return source.staffId.includes(":")
+    ? source.staffId
+    : `${source.corpId}:${source.staffId}`;
+}
+
 function hoseClient(source: HoseSealSource): KyInstance {
   return ky.create({
     prefix: normalizeBaseUrl(source.domain),
@@ -125,7 +131,7 @@ async function fetchHoseCloseApiToken(
   openapiToken: string
 ): Promise<TokenEntry> {
   const client = hoseClient(source);
-  const uid = `${source.corpId}:${source.staffId}`;
+  const uid = hoseUid(source);
 
   const response = await client
     .post("api/openapi/v1.1/provisional/getProvisionalAuth", {

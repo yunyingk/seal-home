@@ -28,7 +28,7 @@ export const SealTenantSchema = z.object({
   name: z.string(),
   tenantSlug: z.string().optional(),
   isDemo: z.boolean().default(false),
-  logoUrl: z.string().optional(),
+  logoUrl: z.string().nullable().optional(),
   hoseCorpConfig: HoseCorpConfigSchema.optional()
 });
 
@@ -87,14 +87,14 @@ export const ApprovalDocumentSchema = z.object({
   enabled: z.boolean().default(true),
   scenarios: z.array(z.string()).default([]),
   tags: z.array(z.string()).default([]),
-  category: z.string().optional(),
+  category: z.string().nullable().optional(),
   categoryTags: z.array(z.string()).default([]),
-  createdBy: z.string().optional(),
-  createdByName: z.string().optional(),
+  createdBy: z.string().nullable().optional(),
+  createdByName: z.string().nullable().optional(),
   createdAt: z.number().optional(),
   updatedAt: z.number().optional(),
-  updatedBy: z.string().optional(),
-  updatedByName: z.string().optional(),
+  updatedBy: z.string().nullable().optional(),
+  updatedByName: z.string().nullable().optional(),
   isDeleted: z.boolean().default(false)
 });
 
