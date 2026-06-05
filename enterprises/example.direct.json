@@ -1,0 +1,21 @@
+{
+  "id": "direct-corp",
+  "name": "Direct Seal 企业",
+  "seal": {
+    "url": "https://corp-id.sealai.cc",
+    "endpoints": {
+      "approvalStylePreferences": "api/v1/approval/style-preferences"
+    }
+  },
+  "source": {
+    "type": "direct",
+    "token": "seal-bearer-token",
+    "sealUrl": "https://corp-id.sealai.cc",
+    "expiresIn": 3600,
+    "corpId": "corp-id",
+    "staffId": "staff-id"
+  },
+  "auth": {
+    "refreshTtl": 300
+  }
+}

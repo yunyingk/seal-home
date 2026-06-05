@@ -1,0 +1,21 @@
+{
+  "id": "corp-id",
+  "name": "企业名称",
+  "seal": {
+    "url": "https://corp-id.sealai.cc",
+    "endpoints": {
+      "approvalStylePreferences": "api/v1/approval/style-preferences"
+    }
+  },
+  "source": {
+    "type": "hose",
+    "domain": "https://app.ekuaibao.com",
+    "key": "hose-app-key",
+    "password": "hose-app-security",
+    "staffId": "hose-staff-id",
+    "corpId": "hose-corp-id"
+  },
+  "auth": {
+    "refreshTtl": 300
+  }
+}
