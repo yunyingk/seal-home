@@ -13,6 +13,8 @@ import {
   MeData,
   MeDataSchema,
   PublishVersionDataSchema,
+  SealSessionData,
+  SealSessionDataSchema,
   RuleSetVersion,
   RuleSetVersionSchema
 } from "./types.js";
@@ -24,6 +26,10 @@ async function unwrap<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
 
 export async function getMe(client: KyInstance): Promise<MeData> {
   return unwrap(await client.get("api/v1/auth/me"), MeDataSchema);
+}
+
+export async function getSession(client: KyInstance): Promise<SealSessionData> {
+  return unwrap(await client.get("api/auth/get-session"), SealSessionDataSchema);
 }
 
 export async function listApprovalRules(client: KyInstance): Promise<ApprovalRulesData> {

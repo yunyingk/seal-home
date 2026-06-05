@@ -37,6 +37,39 @@ export const MeDataSchema = z.object({
   tenant: SealTenantSchema
 });
 
+export const SealSessionUserSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  email: z.string().nullable().optional(),
+  emailVerified: z.boolean().optional(),
+  image: z.string().nullable().optional(),
+  tenantId: z.string().optional(),
+  provider: z.string().optional(),
+  providerUserId: z.string().optional(),
+  mobile: z.string().nullable().optional(),
+  status: z.string().optional(),
+  permissions: z.array(z.string()).default([]),
+  isAdmin: z.boolean().default(false),
+  hosecloudStaff: z.unknown().optional()
+}).passthrough();
+
+export const SealSessionInfoSchema = z.object({
+  id: z.string(),
+  token: z.string().optional(),
+  expiresAt: z.string(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  ipAddress: z.string().optional(),
+  userAgent: z.string().optional(),
+  userId: z.string(),
+  delegationId: z.string().nullable().optional()
+}).passthrough();
+
+export const SealSessionDataSchema = z.object({
+  user: SealSessionUserSchema,
+  session: SealSessionInfoSchema
+});
+
 export const ApprovalRuleSchema = z.object({
   id: z.string(),
   tenantId: z.string().optional(),
@@ -143,6 +176,7 @@ export const ApprovalStylePreferencesSchema = z.object({
 }).passthrough();
 
 export type MeData = z.infer<typeof MeDataSchema>;
+export type SealSessionData = z.infer<typeof SealSessionDataSchema>;
 export type ApprovalRule = z.infer<typeof ApprovalRuleSchema>;
 export type ApprovalRulesData = z.infer<typeof ApprovalRulesDataSchema>;
 export type RuleSetVersion = z.infer<typeof RuleSetVersionSchema>;

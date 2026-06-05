@@ -15,6 +15,12 @@ export const sealTools = [
     handler: async (client: KyInstance) => api.getMe(client)
   },
   {
+    name: "seal_session_get",
+    description: "查询当前 Seal Bearer session、用户和过期时间",
+    parameters: z.object({}),
+    handler: async (client: KyInstance) => api.getSession(client)
+  },
+  {
     name: "seal_approval_rules_list",
     description: "列出 Seal 当前草稿审批规则",
     parameters: z.object({}),

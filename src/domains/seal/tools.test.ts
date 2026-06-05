@@ -24,4 +24,9 @@ describe("sealTools", () => {
     const tool = sealTools.find((item) => item.name === "seal_approval_context_get");
     expect(tool).toBeDefined();
   });
+
+  test("includes the session diagnostic tool", () => {
+    const tool = sealTools.find((item) => item.name === "seal_session_get");
+    expect(tool).toBeDefined();
+  });
 });
