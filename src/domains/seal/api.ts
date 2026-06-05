@@ -150,7 +150,7 @@ export async function updateApprovalDocument(
 
 export async function getApprovalStylePreferences(
   client: KyInstance,
-  endpoint = "api/v1/approval/style-preferences"
+  endpoint = "api/v1/agent/ai-approval/config"
 ): Promise<ApprovalStylePreferences> {
   return unwrap(
     await client.get(endpoint),
@@ -161,7 +161,7 @@ export async function getApprovalStylePreferences(
 export async function updateApprovalStylePreferences(
   client: KyInstance,
   params: Record<string, unknown>,
-  endpoint = "api/v1/approval/style-preferences"
+  endpoint = "api/v1/agent/ai-approval/config"
 ): Promise<ApprovalStylePreferences> {
   return unwrap(
     await client.patch(endpoint, { json: params }),

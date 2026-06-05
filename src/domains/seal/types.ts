@@ -103,6 +103,29 @@ export const ApprovalDocumentListDataSchema = z.object({
   total: z.number().optional()
 });
 
+export const DecisionPreferencesSchema = z.object({
+  explicitApprove: z.string().default(""),
+  explicitReject: z.string().default(""),
+  exemptApprove: z.string().default(""),
+  review: z.string().default("")
+}).passthrough();
+
+export const ApprovalIntegrationSchema = z.object({
+  type: z.string(),
+  signKey: z.string().optional(),
+  outboundName: z.string().optional(),
+  mode: z.string().optional(),
+  autoApprovalRate: z.number().optional(),
+  apiKey: z.string().optional(),
+  apiSecret: z.string().optional(),
+  apiOrigin: z.string().optional(),
+  corporationId: z.string().optional(),
+  ebotSignKey: z.string().optional(),
+  completionSignKey: z.string().optional(),
+  outboundMessageId: z.string().optional(),
+  completionMessageId: z.string().optional()
+}).passthrough();
+
 export const ApprovalStylePreferencesSchema = z.object({
   id: z.string().optional(),
   tenantId: z.string().optional(),
@@ -113,7 +136,10 @@ export const ApprovalStylePreferencesSchema = z.object({
   examples: z.array(z.string()).default([]),
   prohibitedPhrases: z.array(z.string()).default([]),
   customInstructions: z.string().optional(),
-  updatedAt: z.number().optional()
+  updatedAt: z.number().optional(),
+  decisionPreferences: DecisionPreferencesSchema.optional(),
+  integrationSystem: z.string().optional(),
+  integrations: z.array(ApprovalIntegrationSchema).default([])
 }).passthrough();
 
 export type MeData = z.infer<typeof MeDataSchema>;
@@ -122,4 +148,6 @@ export type ApprovalRulesData = z.infer<typeof ApprovalRulesDataSchema>;
 export type RuleSetVersion = z.infer<typeof RuleSetVersionSchema>;
 export type ApprovalDocument = z.infer<typeof ApprovalDocumentSchema>;
 export type ApprovalDocumentListData = z.infer<typeof ApprovalDocumentListDataSchema>;
+export type DecisionPreferences = z.infer<typeof DecisionPreferencesSchema>;
+export type ApprovalIntegration = z.infer<typeof ApprovalIntegrationSchema>;
 export type ApprovalStylePreferences = z.infer<typeof ApprovalStylePreferencesSchema>;

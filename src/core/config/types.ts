@@ -46,13 +46,13 @@ export const SealEndpointSchema = z.object({
   url: z.string().url().optional(),
   tenantSlug: z.string().optional(),
   endpoints: z.object({
-    approvalStylePreferences: z.string().default("api/v1/approval/style-preferences")
+    approvalStylePreferences: z.string().default("api/v1/agent/ai-approval/config")
   }).default({
-    approvalStylePreferences: "api/v1/approval/style-preferences"
+    approvalStylePreferences: "api/v1/agent/ai-approval/config"
   })
 }).default({
   endpoints: {
-    approvalStylePreferences: "api/v1/approval/style-preferences"
+    approvalStylePreferences: "api/v1/agent/ai-approval/config"
   }
 });
 

@@ -27,7 +27,7 @@ For an already-authenticated Seal source, copy `enterprises/example.direct.json`
   "seal": {
     "url": "https://corp-id.sealai.cc",
     "endpoints": {
-      "approvalStylePreferences": "api/v1/approval/style-preferences"
+      "approvalStylePreferences": "api/v1/agent/ai-approval/config"
     }
   },
   "source": {
