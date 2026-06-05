@@ -3,16 +3,20 @@ import { CorpConfig } from "../../core/config/types.js";
 import {
   ApprovalDocument,
   ApprovalRule,
-  ApprovalStylePreferences
+  ApprovalStylePreferences,
+  RuleSetVersion
 } from "./types.js";
 import {
+  getApprovalRuleVersion,
   getApprovalStylePreferences,
   listApprovalDocuments,
+  listApprovalRuleVersions,
   listApprovalRules
 } from "./api.js";
 
 type MatchMode = "any" | "all";
 type SearchArea = "rules" | "documents" | "preferences";
+type RuleVersionScope = "current" | "all" | "version";
 
 export type ApprovalSearchParams = {
   keywords: string[];
@@ -23,6 +27,8 @@ export type ApprovalSearchParams = {
   documentLimit?: number;
   maxResults?: number;
   refresh?: boolean;
+  ruleVersionScope?: RuleVersionScope;
+  ruleVersionId?: string;
 };
 
 export type ApprovalSearchResult = {
@@ -161,6 +167,44 @@ function ruleEntries(rule: ApprovalRule): SearchEntry[] {
   ];
 }
 
+function ruleVersionEntries(version: RuleSetVersion): SearchEntry[] {
+  return version.rules.flatMap((rule, index) => {
+    const entityId = `${version.id}:${rule.description.slice(0, 32)}`;
+    const metadata = {
+      versionId: version.id,
+      versionNumber: version.versionNumber,
+      versionName: version.versionName,
+      publishedByName: version.publishedByName,
+      publishedAt: version.publishedAt,
+      scope: rule.scope,
+      strictness: rule.strictness,
+      code: "code" in rule ? (rule as { code?: string }).code : undefined,
+      index
+    };
+
+    return [
+      {
+        area: "rules" as const,
+        entityType: "rule" as const,
+        entityId,
+        title: `${version.versionName} / ${rule.scope}`,
+        field: "history.description",
+        value: rule.description,
+        metadata
+      },
+      {
+        area: "rules" as const,
+        entityType: "rule" as const,
+        entityId,
+        title: `${version.versionName} / ${rule.scope}`,
+        field: "history.scope",
+        value: rule.scope,
+        metadata
+      }
+    ];
+  });
+}
+
 function documentEntries(document: ApprovalDocument): SearchEntry[] {
   return [
     {
@@ -244,15 +288,22 @@ function preferenceEntries(preferences: ApprovalStylePreferences): SearchEntry[]
 async function loadSearchEntries(
   client: KyInstance,
   corp: CorpConfig,
-  params: Pick<ApprovalSearchParams, "documentLimit" | "refresh">
+  params: Pick<ApprovalSearchParams, "documentLimit" | "refresh" | "ruleVersionScope" | "ruleVersionId">
 ): Promise<SearchCacheEntry> {
-  const cached = searchCache.get(corp.id);
+  const ruleVersionScope = params.ruleVersionScope ?? "current";
+  const cacheKey = [
+    corp.id,
+    `ruleVersionScope=${ruleVersionScope}`,
+    `ruleVersionId=${params.ruleVersionId ?? ""}`,
+    `documentLimit=${params.documentLimit ?? 100}`
+  ].join("|");
+  const cached = searchCache.get(cacheKey);
   if (!params.refresh && cached && Date.now() < cached.expiresAt) {
     return cached;
   }
 
   const [rules, documents, preferences] = await Promise.all([
-    listApprovalRules(client),
+    loadRuleEntries(client, ruleVersionScope, params.ruleVersionId),
     listApprovalDocuments(client, { limit: params.documentLimit ?? 100 }),
     getApprovalStylePreferences(
       client,
@@ -263,7 +314,7 @@ async function loadSearchEntries(
   const fetchedAt = Date.now();
   const next: SearchCacheEntry = {
     entries: [
-      ...rules.rules.flatMap(ruleEntries),
+      ...rules,
       ...documents.articles.flatMap(documentEntries),
       ...preferenceEntries(preferences)
     ],
@@ -271,8 +322,30 @@ async function loadSearchEntries(
     expiresAt: fetchedAt + CACHE_TTL_MS
   };
 
-  searchCache.set(corp.id, next);
+  searchCache.set(cacheKey, next);
   return next;
+}
+
+async function loadRuleEntries(
+  client: KyInstance,
+  scope: RuleVersionScope,
+  versionId?: string
+): Promise<SearchEntry[]> {
+  if (scope === "current") {
+    const rules = await listApprovalRules(client);
+    return rules.rules.flatMap(ruleEntries);
+  }
+
+  if (scope === "version") {
+    if (!versionId) {
+      throw new Error("ruleVersionId is required when ruleVersionScope is version");
+    }
+    const version = await getApprovalRuleVersion(client, versionId);
+    return ruleVersionEntries(version);
+  }
+
+  const versions = await listApprovalRuleVersions(client);
+  return versions.flatMap(ruleVersionEntries);
 }
 
 export async function searchApprovalContent(
@@ -285,6 +358,7 @@ export async function searchApprovalContent(
   const contextLines = params.contextLines ?? 3;
   const areas = new Set(params.areas ?? ["rules", "documents", "preferences"]);
   const maxResults = params.maxResults ?? 50;
+  const ruleVersionScope = params.ruleVersionScope ?? "current";
   const keywords = normalizeKeywords(params.keywords, caseSensitive);
 
   if (keywords.length === 0) {
@@ -293,7 +367,9 @@ export async function searchApprovalContent(
 
   const cached = await loadSearchEntries(client, corp, {
     documentLimit: params.documentLimit,
-    refresh: params.refresh
+    refresh: params.refresh,
+    ruleVersionScope,
+    ruleVersionId: params.ruleVersionId
   });
 
   const results = cached.entries
@@ -309,7 +385,9 @@ export async function searchApprovalContent(
       areas: Array.from(areas),
       caseSensitive,
       contextLines,
-      refresh: params.refresh ?? false
+      refresh: params.refresh ?? false,
+      ruleVersionScope,
+      ruleVersionId: params.ruleVersionId
     },
     cache: {
       fetchedAt: new Date(cached.fetchedAt).toISOString(),

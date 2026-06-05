@@ -59,6 +59,16 @@ export async function listApprovalRuleVersions(client: KyInstance): Promise<Rule
   return unwrap(await client.get("api/v1/rule-set-versions"), z.array(RuleSetVersionSchema));
 }
 
+export async function getApprovalRuleVersion(
+  client: KyInstance,
+  versionId: string
+): Promise<RuleSetVersion> {
+  return unwrap(
+    await client.get(`api/v1/rule-set-versions/${versionId}`),
+    RuleSetVersionSchema
+  );
+}
+
 export async function publishApprovalRuleVersion(
   client: KyInstance,
   versionName: string

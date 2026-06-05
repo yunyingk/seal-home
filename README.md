@@ -49,7 +49,7 @@ For an already-authenticated Seal source, copy `enterprises/example.direct.json`
 - `seal_source_config`: resolve current Seal enterprise config from the configured source.
 - `seal_whoami`: current Seal user and tenant.
 - `seal_session_get`: current Seal Bearer session and expiration.
-- `seal_approval_search`: keyword search across approval rules, documents, and approval preferences. Results include area, entity, field, line number, and surrounding context. Search data is cached in memory for 5 minutes.
+- `seal_approval_search`: keyword search across approval rules, documents, approval preferences, and optionally published rule history. Results include area, entity, field, line number, and surrounding context. Search data is cached in memory for 5 minutes.
 - `seal_approval_context_get`: read current approval rules, approval documents, and approval style preferences in one call.
 - `seal_approval_rules_list`: current draft approval rules.
 - `seal_approval_rule_create`, `seal_approval_rule_update`, `seal_approval_rule_delete`: maintain approval rules.

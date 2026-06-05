@@ -173,7 +173,9 @@ export const sealTools = [
       contextLines: z.number().int().nonnegative().optional().describe("返回命中行前后几行，默认 3"),
       documentLimit: z.number().int().positive().optional().describe("缓存刷新时最多拉取文档数，默认 100"),
       maxResults: z.number().int().positive().optional().describe("最多返回命中数，默认 50"),
-      refresh: z.boolean().optional().describe("是否跳过 5 分钟内存缓存并强制刷新")
+      refresh: z.boolean().optional().describe("是否跳过 5 分钟内存缓存并强制刷新"),
+      ruleVersionScope: z.enum(["current", "all", "version"]).optional().describe("规则检索范围，默认 current；all 会检索所有已发布历史版本"),
+      ruleVersionId: z.string().optional().describe("ruleVersionScope=version 时指定版本 ID")
     }),
     handler: async (
       client: KyInstance,
@@ -186,6 +188,8 @@ export const sealTools = [
         documentLimit?: number;
         maxResults?: number;
         refresh?: boolean;
+        ruleVersionScope?: "current" | "all" | "version";
+        ruleVersionId?: string;
       },
       context: ToolContext
     ) => searchApprovalContent(client, context.corp, params)
