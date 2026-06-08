@@ -34,4 +34,10 @@ describe("sealTools", () => {
     const tool = sealTools.find((item) => item.name === "seal_approval_search");
     expect(tool).toBeDefined();
   });
+
+  test("includes approval run Langfuse bridge tools", () => {
+    expect(sealTools.find((item) => item.name === "seal_approval_runs_search")).toBeDefined();
+    expect(sealTools.find((item) => item.name === "seal_simulation_batch_records_get")).toBeDefined();
+    expect(sealTools.find((item) => item.name === "seal_approval_run_langfuse_bridge_get")).toBeDefined();
+  });
 });

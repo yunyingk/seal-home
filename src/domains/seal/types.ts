@@ -175,6 +175,44 @@ export const ApprovalStylePreferencesSchema = z.object({
   integrations: z.array(ApprovalIntegrationSchema).default([])
 }).passthrough();
 
+export const ApprovalRunDocumentSchema = z.object({
+  id: z.string().optional(),
+  sn: z.string().optional(),
+  title: z.string().optional(),
+  name: z.string().optional()
+}).passthrough();
+
+export const ApprovalRunSourceExtendDataSchema = z.object({
+  _langfuseTraceId: z.string().optional(),
+  simulation_batch_id: z.string().optional()
+}).passthrough();
+
+export const ApprovalRunSchema = z.object({
+  id: z.string(),
+  tenantId: z.string().optional(),
+  agentId: z.string().optional(),
+  status: z.string().optional(),
+  taskMode: z.string().optional(),
+  finalExecutionMode: z.string().optional(),
+  sourceSystem: z.string().optional(),
+  sourceDocumentSN: z.string().optional(),
+  sourceDocumentId: z.string().optional(),
+  documentId: z.string().optional(),
+  document: ApprovalRunDocumentSchema.optional(),
+  result: z.unknown().optional(),
+  pipelineData: z.unknown().optional(),
+  sourceExtendData: ApprovalRunSourceExtendDataSchema.optional(),
+  createdAt: z.union([z.string(), z.number()]).optional(),
+  updatedAt: z.union([z.string(), z.number()]).optional()
+}).passthrough();
+
+export const ApprovalRunListDataSchema = z.object({
+  records: z.array(ApprovalRunSchema).default([]),
+  total: z.number().optional(),
+  page: z.number().optional(),
+  pageSize: z.number().optional()
+}).passthrough();
+
 export type MeData = z.infer<typeof MeDataSchema>;
 export type SealSessionData = z.infer<typeof SealSessionDataSchema>;
 export type ApprovalRule = z.infer<typeof ApprovalRuleSchema>;
@@ -185,3 +223,5 @@ export type ApprovalDocumentListData = z.infer<typeof ApprovalDocumentListDataSc
 export type DecisionPreferences = z.infer<typeof DecisionPreferencesSchema>;
 export type ApprovalIntegration = z.infer<typeof ApprovalIntegrationSchema>;
 export type ApprovalStylePreferences = z.infer<typeof ApprovalStylePreferencesSchema>;
+export type ApprovalRun = z.infer<typeof ApprovalRunSchema>;
+export type ApprovalRunListData = z.infer<typeof ApprovalRunListDataSchema>;

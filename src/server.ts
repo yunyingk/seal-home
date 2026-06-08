@@ -60,6 +60,7 @@ async function main() {
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
+    corpContext.refresh(loadCorpConfigs());
 
     if (name === "seal_corps_list") {
       return textResult(corpContext.listCorps());

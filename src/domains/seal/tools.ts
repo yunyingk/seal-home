@@ -3,6 +3,7 @@ import { KyInstance } from "ky";
 import * as api from "./api.js";
 import { CorpConfig } from "../../core/config/types.js";
 import { searchApprovalContent } from "./search.js";
+import type { ApprovalRun } from "./types.js";
 
 type ToolContext = {
   corp: CorpConfig;
@@ -242,7 +243,204 @@ export const sealTools = [
         params,
         context.corp.seal.endpoints.approvalStylePreferences
       )
+  },
+  {
+    name: "seal_approval_runs_search",
+    description: "查询 Seal 审批/审核运行记录总表，并整理合思单据到 Langfuse trace/session 的桥接字段",
+    parameters: z.object({
+      offset: z.number().int().nonnegative().optional(),
+      limit: z.number().int().positive().max(100).optional(),
+      fromTimestamp: z.string().optional(),
+      toTimestamp: z.string().optional(),
+      status: z.string().optional(),
+      taskMode: z.string().optional(),
+      sourceDocumentSN: z.string().optional(),
+      sourceDocumentId: z.string().optional(),
+      query: z.string().optional().describe("在 id、sourceDocumentSN、sourceDocumentId、documentId、Langfuse traceId 中做本地包含匹配")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: {
+        offset?: number;
+        limit?: number;
+        fromTimestamp?: string;
+        toTimestamp?: string;
+        status?: string;
+        taskMode?: string;
+        sourceDocumentSN?: string;
+        sourceDocumentId?: string;
+        query?: string;
+      }
+    ) => {
+      const data = await api.listApprovalRuns(client, params);
+      const records = filterRuns(data.records, params.query);
+
+      return {
+        ...data,
+        records: records.map(summarizeApprovalRun),
+        bridge: summarizeRunBridge(records)
+      };
+    }
+  },
+  {
+    name: "seal_simulation_batch_records_get",
+    description: "获取某一次 Seal 模拟批次的运行记录，并整理对应 Langfuse trace/session 桥接字段",
+    parameters: z.object({
+      batchId: z.string().describe("simulation batch ID"),
+      query: z.string().optional().describe("在 id、sourceDocumentSN、sourceDocumentId、documentId、Langfuse traceId 中做本地包含匹配")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { batchId: string; query?: string }
+    ) => {
+      const records = filterRuns(
+        await api.listSimulationBatchRecords(client, params.batchId),
+        params.query
+      );
+
+      return {
+        batchId: params.batchId,
+        count: records.length,
+        records: records.map(summarizeApprovalRun),
+        bridge: summarizeRunBridge(records)
+      };
+    }
+  },
+  {
+    name: "seal_approval_run_langfuse_bridge_get",
+    description: "从 Seal approval run 中抽取 Langfuse 定位信息；优先返回 _langfuseTraceId，没有时给出 hosecloud-{sourceDocumentSN} session 回退",
+    parameters: z.object({
+      recordId: z.string().optional(),
+      sourceDocumentSN: z.string().optional(),
+      sourceDocumentId: z.string().optional(),
+      simulationBatchId: z.string().optional(),
+      limit: z.number().int().positive().max(100).optional()
+    }),
+    handler: async (
+      client: KyInstance,
+      params: {
+        recordId?: string;
+        sourceDocumentSN?: string;
+        sourceDocumentId?: string;
+        simulationBatchId?: string;
+        limit?: number;
+      }
+    ) => {
+      const records = params.simulationBatchId
+        ? await api.listSimulationBatchRecords(client, params.simulationBatchId)
+        : (await api.listApprovalRuns(client, {
+            limit: params.limit ?? 50,
+            sourceDocumentSN: params.sourceDocumentSN,
+            sourceDocumentId: params.sourceDocumentId
+          })).records;
+
+      const filtered = records.filter((record) =>
+        matchesRunLookup(record, {
+          recordId: params.recordId,
+          sourceDocumentSN: params.sourceDocumentSN,
+          sourceDocumentId: params.sourceDocumentId
+        })
+      );
+
+      return {
+        count: filtered.length,
+        records: filtered.map(summarizeApprovalRun),
+        bridge: summarizeRunBridge(filtered)
+      };
+    }
   }
 ];
 
 export type SealTool = (typeof sealTools)[number];
+
+type ApprovalRunSummary = {
+  id: string;
+  tenantId?: string;
+  agentId?: string;
+  status?: string;
+  taskMode?: string;
+  finalExecutionMode?: string;
+  sourceSystem?: string;
+  sourceDocumentSN?: string;
+  sourceDocumentId?: string;
+  documentId?: string;
+  simulationBatchId?: string;
+  langfuseTraceId?: string;
+  langfuseSessionFallback?: string;
+  createdAt?: string | number;
+  updatedAt?: string | number;
+};
+
+function summarizeApprovalRun(record: ApprovalRun): ApprovalRunSummary {
+  const sourceDocumentSN = record.sourceDocumentSN;
+
+  return {
+    id: record.id,
+    tenantId: record.tenantId,
+    agentId: record.agentId,
+    status: record.status,
+    taskMode: record.taskMode,
+    finalExecutionMode: record.finalExecutionMode,
+    sourceSystem: record.sourceSystem,
+    sourceDocumentSN,
+    sourceDocumentId: record.sourceDocumentId,
+    documentId: record.documentId,
+    simulationBatchId: record.sourceExtendData?.simulation_batch_id,
+    langfuseTraceId: record.sourceExtendData?._langfuseTraceId,
+    langfuseSessionFallback: sourceDocumentSN ? `hosecloud-${sourceDocumentSN}` : undefined,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt
+  };
+}
+
+function summarizeRunBridge(records: ApprovalRun[]) {
+  return records.map((record) => {
+    const summary = summarizeApprovalRun(record);
+    return {
+      recordId: summary.id,
+      tenantId: summary.tenantId,
+      agentId: summary.agentId,
+      sourceDocumentSN: summary.sourceDocumentSN,
+      sourceDocumentId: summary.sourceDocumentId,
+      simulationBatchId: summary.simulationBatchId,
+      langfuseTraceId: summary.langfuseTraceId,
+      langfuseSessionFallback: summary.langfuseSessionFallback,
+      resolution:
+        summary.langfuseTraceId
+          ? "trace"
+          : summary.langfuseSessionFallback
+            ? "session-fallback"
+            : "unresolved"
+    };
+  });
+}
+
+function filterRuns(records: ApprovalRun[], query?: string): ApprovalRun[] {
+  const normalized = query?.trim().toLowerCase();
+  if (!normalized) return records;
+
+  return records.filter((record) =>
+    [
+      record.id,
+      record.sourceDocumentSN,
+      record.sourceDocumentId,
+      record.documentId,
+      record.sourceExtendData?._langfuseTraceId,
+      record.sourceExtendData?.simulation_batch_id
+    ].some((value) => value?.toLowerCase().includes(normalized))
+  );
+}
+
+function matchesRunLookup(
+  record: ApprovalRun,
+  lookup: {
+    recordId?: string;
+    sourceDocumentSN?: string;
+    sourceDocumentId?: string;
+  }
+): boolean {
+  if (lookup.recordId && record.id !== lookup.recordId) return false;
+  if (lookup.sourceDocumentSN && record.sourceDocumentSN !== lookup.sourceDocumentSN) return false;
+  if (lookup.sourceDocumentId && record.sourceDocumentId !== lookup.sourceDocumentId) return false;
+  return true;
+}

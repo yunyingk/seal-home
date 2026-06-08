@@ -4,6 +4,10 @@ import {
   ApprovalDocumentListData,
   ApprovalDocumentListDataSchema,
   ApprovalDocumentSchema,
+  ApprovalRun,
+  ApprovalRunListData,
+  ApprovalRunListDataSchema,
+  ApprovalRunSchema,
   ApprovalRulesData,
   ApprovalRulesDataSchema,
   ApprovalRule,
@@ -212,4 +216,57 @@ export async function getApprovalContext(
     documents,
     stylePreferences
   };
+}
+
+export async function listApprovalRuns(
+  client: KyInstance,
+  params: {
+    offset?: number;
+    limit?: number;
+    fromTimestamp?: string;
+    toTimestamp?: string;
+    status?: string;
+    taskMode?: string;
+    sourceDocumentSN?: string;
+    sourceDocumentId?: string;
+  } = {}
+): Promise<ApprovalRunListData> {
+  const searchParams = new URLSearchParams();
+  searchParams.set("offset", String(params.offset ?? 0));
+  searchParams.set("limit", String(params.limit ?? 50));
+
+  setOptional(searchParams, "fromTimestamp", params.fromTimestamp);
+  setOptional(searchParams, "toTimestamp", params.toTimestamp);
+  setOptional(searchParams, "status", params.status);
+  setOptional(searchParams, "taskMode", params.taskMode);
+  setOptional(searchParams, "sourceDocumentSN", params.sourceDocumentSN);
+  setOptional(searchParams, "sourceDocumentId", params.sourceDocumentId);
+
+  return unwrap(
+    await client.get("api/v1/approvals", { searchParams }),
+    ApprovalRunListDataSchema
+  );
+}
+
+export async function listSimulationBatchRecords(
+  client: KyInstance,
+  batchId: string
+): Promise<ApprovalRun[]> {
+  const json = (await client
+    .get(`api/v1/simulation/batch/${batchId}/records`)
+    .json()) as { data?: unknown };
+  const data = json.data ?? json;
+
+  if (Array.isArray(data)) {
+    return z.array(ApprovalRunSchema).parse(data);
+  }
+
+  const parsed = ApprovalRunListDataSchema.parse(data);
+  return parsed.records;
+}
+
+function setOptional(searchParams: URLSearchParams, key: string, value?: string) {
+  if (value) {
+    searchParams.set(key, value);
+  }
 }

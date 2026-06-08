@@ -56,3 +56,25 @@ For an already-authenticated Seal source, copy `enterprises/example.direct.json`
 - `seal_approval_rule_versions_list`, `seal_approval_rule_version_publish`: read and publish rule versions.
 - `seal_approval_documents_list`, `seal_approval_document_get`, `seal_approval_document_create`, `seal_approval_document_update`: maintain approval documents.
 - `seal_approval_style_preferences_get`, `seal_approval_style_preferences_update`: read and update approval style preferences.
+- `seal_approval_runs_search`: search the approval run history from `api/v1/approvals`. This is the broad record table for historical runs and returns compact bridge fields for locating Langfuse context.
+- `seal_simulation_batch_records_get`: read records from one simulation batch via `api/v1/simulation/batch/{batchId}/records`.
+- `seal_approval_run_langfuse_bridge_get`: resolve approval run records to Langfuse lookup hints. It prefers `sourceExtendData._langfuseTraceId`; if that is missing, it returns `hosecloud-{sourceDocumentSN}` as the session fallback.
+
+## Approval Run To Langfuse Bridge
+
+Seal approval runs and simulation batch records are treated as two views over the same run data:
+
+- `api/v1/approvals` is the total approval run list. Use it for history search by time, status, task mode, source document SN, or source document ID.
+- `api/v1/simulation/batch/{batchId}/records` is the detail list for one simulation batch. Use it when the user is already looking at a simulation batch.
+
+The useful join fields for Langfuse work are:
+
+- `sourceDocumentSN`
+- `sourceDocumentId`
+- `tenantId`
+- `agentId`
+- approval run `id`
+- `sourceExtendData._langfuseTraceId`
+- `sourceExtendData.simulation_batch_id`
+
+When `_langfuseTraceId` exists, downstream tools should fetch the trace directly. When it is absent, use `hosecloud-{sourceDocumentSN}` as the Langfuse session fallback.
