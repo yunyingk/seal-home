@@ -256,7 +256,8 @@ export const sealTools = [
       taskMode: z.string().optional(),
       sourceDocumentSN: z.string().optional(),
       sourceDocumentId: z.string().optional(),
-      query: z.string().optional().describe("在 id、sourceDocumentSN、sourceDocumentId、documentId、Langfuse traceId 中做本地包含匹配")
+      query: z.string().optional().describe("在 id、sourceDocumentSN、sourceDocumentId、documentId、Langfuse traceId 中做本地包含匹配"),
+      includeBridge: z.boolean().optional().describe("是否返回完整 bridge 数组；默认 false，避免长输出")
     }),
     handler: async (
       client: KyInstance,
@@ -270,6 +271,7 @@ export const sealTools = [
         sourceDocumentSN?: string;
         sourceDocumentId?: string;
         query?: string;
+        includeBridge?: boolean;
       }
     ) => {
       const data = await api.listApprovalRuns(client, params);
@@ -278,8 +280,58 @@ export const sealTools = [
       return {
         ...data,
         records: records.map(summarizeApprovalRun),
-        bridge: summarizeRunBridge(records)
+        ...(params.includeBridge ? { bridge: summarizeRunBridge(records) } : {})
       };
+    }
+  },
+  {
+    name: "seal_approval_runs_summary",
+    description: "按本地日期/时区汇总 Seal 审批运行记录，返回状态、模式统计和精简记录，避免长 JSON 输出",
+    parameters: z.object({
+      date: z.string().optional().describe("本地日期，格式 YYYY-MM-DD；默认使用 timezone 下的今天"),
+      timezone: z.string().optional().describe("IANA 时区，默认 Asia/Shanghai"),
+      offset: z.number().int().nonnegative().optional(),
+      limit: z.number().int().positive().max(100).optional(),
+      status: z.string().optional(),
+      taskMode: z.string().optional(),
+      sourceDocumentSN: z.string().optional(),
+      sourceDocumentId: z.string().optional(),
+      query: z.string().optional().describe("在 id、sourceDocumentSN、sourceDocumentId、documentId、Langfuse traceId 中做本地包含匹配")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: {
+        date?: string;
+        timezone?: string;
+        offset?: number;
+        limit?: number;
+        status?: string;
+        taskMode?: string;
+        sourceDocumentSN?: string;
+        sourceDocumentId?: string;
+        query?: string;
+      }
+    ) => {
+      const timezone = params.timezone ?? "Asia/Shanghai";
+      const date = params.date ?? localDateKey(Date.now(), timezone) ?? "";
+      const data = await api.listApprovalRuns(client, {
+        offset: params.offset,
+        limit: params.limit ?? 100,
+        status: params.status,
+        taskMode: params.taskMode,
+        sourceDocumentSN: params.sourceDocumentSN,
+        sourceDocumentId: params.sourceDocumentId
+      });
+      const records = filterRuns(data.records, params.query).filter(
+        (record) => localDateKey(record.createdAt, timezone) === date
+      );
+
+      return summarizeApprovalRuns(records, {
+        date,
+        timezone,
+        fetched: data.records.length,
+        total: data.total
+      });
     }
   },
   {
@@ -371,6 +423,13 @@ type ApprovalRunSummary = {
   updatedAt?: string | number;
 };
 
+type ApprovalRunsSummaryOptions = {
+  date: string;
+  timezone: string;
+  fetched: number;
+  total?: number;
+};
+
 function summarizeApprovalRun(record: ApprovalRun): ApprovalRunSummary {
   const sourceDocumentSN = record.sourceDocumentSN;
 
@@ -390,6 +449,33 @@ function summarizeApprovalRun(record: ApprovalRun): ApprovalRunSummary {
     langfuseSessionFallback: sourceDocumentSN ? `hosecloud-${sourceDocumentSN}` : undefined,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
+  };
+}
+
+function summarizeApprovalRuns(records: ApprovalRun[], options: ApprovalRunsSummaryOptions) {
+  return {
+    date: options.date,
+    timezone: options.timezone,
+    fetched: options.fetched,
+    matched: records.length,
+    total: options.total,
+    statusCounts: countBy(records, (record) => record.status ?? "unknown"),
+    taskModeCounts: countBy(records, (record) => record.taskMode ?? "unknown"),
+    records: records.map((record) => {
+      const summary = summarizeApprovalRun(record);
+      return {
+        createdAt: formatLocalDateTime(summary.createdAt, options.timezone),
+        sourceDocumentSN: summary.sourceDocumentSN,
+        sourceDocumentId: summary.sourceDocumentId,
+        status: summary.status,
+        taskMode: summary.taskMode,
+        finalExecutionMode: summary.finalExecutionMode,
+        simulationBatchId: summary.simulationBatchId,
+        langfuseTraceId: summary.langfuseTraceId,
+        langfuseSessionFallback: summary.langfuseSessionFallback,
+        recordId: summary.id
+      };
+    })
   };
 }
 
@@ -443,4 +529,61 @@ function matchesRunLookup(
   if (lookup.sourceDocumentSN && record.sourceDocumentSN !== lookup.sourceDocumentSN) return false;
   if (lookup.sourceDocumentId && record.sourceDocumentId !== lookup.sourceDocumentId) return false;
   return true;
+}
+
+function countBy<T>(items: T[], keyFor: (item: T) => string): Record<string, number> {
+  return items.reduce<Record<string, number>>((counts, item) => {
+    const key = keyFor(item);
+    counts[key] = (counts[key] ?? 0) + 1;
+    return counts;
+  }, {});
+}
+
+function localDateKey(value: string | number | undefined, timezone: string): string | undefined {
+  const date = toDate(value);
+  if (!date) return undefined;
+
+  const parts = localParts(date, timezone);
+  const year = parts.year;
+  const month = (parts.month ?? "01").padStart(2, "0");
+  const day = (parts.day ?? "01").padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatLocalDateTime(value: string | number | undefined, timezone: string): string | undefined {
+  const date = toDate(value);
+  if (!date) return undefined;
+
+  const parts = localParts(date, timezone);
+  const month = (parts.month ?? "01").padStart(2, "0");
+  const day = (parts.day ?? "01").padStart(2, "0");
+  const hour = (parts.hour ?? "00").padStart(2, "0");
+  const minute = (parts.minute ?? "00").padStart(2, "0");
+  const second = (parts.second ?? "00").padStart(2, "0");
+  return `${parts.year ?? "0000"}-${month}-${day} ${hour}:${minute}:${second}`;
+}
+
+function toDate(value: string | number | undefined): Date | null {
+  if (value === undefined) return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function localParts(date: Date, timezone: string): Record<string, string> {
+  return Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value])
+  );
 }
