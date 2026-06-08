@@ -18,6 +18,19 @@ bun run start
 
 For an already-authenticated Seal source, copy `enterprises/example.direct.json` instead.
 
+## CLI
+
+The MCP server and CLI are separate entry points. Use MCP for protocol-native clients; use the CLI from skills, shell scripts, or agents that prefer command execution.
+
+```bash
+bun run cli -- tools list
+bun run cli -- corps list
+bun run cli -- approval-runs summary --date 2026-06-08 --timezone Asia/Shanghai
+bun run cli -- tool seal_approval_runs_summary --json '{"date":"2026-06-08","timezone":"Asia/Shanghai"}'
+```
+
+CLI output is JSON on stdout. Errors are written to stderr.
+
 ## Enterprise Config
 
 ```json

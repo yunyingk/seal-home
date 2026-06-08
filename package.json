@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "type": "module",
   "module": "src/server.ts",
+  "bin": {
+    "seal-home": "src/cli.ts"
+  },
   "scripts": {
     "dev": "bun run --watch src/server.ts",
     "start": "bun run src/server.ts",
     "probe": "bun run src/probe.ts",
+    "cli": "bun run src/cli.ts",
     "check": "tsc --noEmit",
     "test": "bun test"
   },
