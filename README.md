@@ -92,3 +92,12 @@ The useful join fields for Langfuse work are:
 - `sourceExtendData.simulation_batch_id`
 
 When `_langfuseTraceId` exists, downstream tools should fetch the trace directly. When it is absent, use `hosecloud-{sourceDocumentSN}` as the Langfuse session fallback.
+
+## Engineering Notes
+
+- Prefer Bun-native commands in this repository: `bun run check`, `bun test`, and `bun run cli -- ...`. `npm run check` may work, but Bun is the project runtime and lockfile owner.
+- Keep MCP and CLI as thin entry points. Shared behavior belongs in `src/core` and `src/domains`; `src/server.ts` should only handle MCP protocol concerns, and `src/cli.ts` should only handle command parsing and JSON output.
+- Do not print diagnostic text to stdout from the MCP server. MCP uses stdout as the protocol stream; use stderr for server diagnostics.
+- Prefer CLI or script processing for large tool responses. For daily approval questions, call `seal_approval_runs_summary` or `bun run cli -- approval-runs summary ...` instead of reading long `seal_approval_runs_search` output manually.
+- Keep broad search tools compact by default. Add explicit opt-in flags such as `includeBridge` for verbose fields that are useful only in deeper debugging.
+- When Seal API timestamp filters are uncertain, filter again in tool code by `createdAt` and explicit timezone before presenting date-based answers.
