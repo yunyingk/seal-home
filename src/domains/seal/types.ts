@@ -179,7 +179,8 @@ export const ApprovalRunDocumentSchema = z.object({
   id: z.string().optional(),
   sn: z.string().optional(),
   title: z.string().optional(),
-  name: z.string().optional()
+  name: z.string().optional(),
+  fields: z.array(z.unknown()).optional()
 }).passthrough();
 
 export const ApprovalRunSourceExtendDataSchema = z.object({

@@ -225,8 +225,11 @@ export async function listApprovalRuns(
     limit?: number;
     fromTimestamp?: string;
     toTimestamp?: string;
+    startDate?: string;
+    endDate?: string;
     status?: string;
     taskMode?: string;
+    manualApprovalStatus?: string | string[];
     sourceDocumentSN?: string;
     sourceDocumentId?: string;
   } = {}
@@ -237,15 +240,22 @@ export async function listApprovalRuns(
 
   setOptional(searchParams, "fromTimestamp", params.fromTimestamp);
   setOptional(searchParams, "toTimestamp", params.toTimestamp);
+  setOptional(searchParams, "startDate", params.startDate);
+  setOptional(searchParams, "endDate", params.endDate);
   setOptional(searchParams, "status", params.status);
   setOptional(searchParams, "taskMode", params.taskMode);
   setOptional(searchParams, "sourceDocumentSN", params.sourceDocumentSN);
   setOptional(searchParams, "sourceDocumentId", params.sourceDocumentId);
+  setArrayOptional(searchParams, "manualApprovalStatus", params.manualApprovalStatus);
 
   return unwrap(
     await client.get("api/v1/approvals", { searchParams }),
     ApprovalRunListDataSchema
   );
+}
+
+export async function getApprovalRun(client: KyInstance, runId: string): Promise<ApprovalRun> {
+  return unwrap(await client.get(`api/v1/approvals/${runId}`), ApprovalRunSchema);
 }
 
 export async function listSimulationBatchRecords(
@@ -269,4 +279,20 @@ function setOptional(searchParams: URLSearchParams, key: string, value?: string)
   if (value) {
     searchParams.set(key, value);
   }
+}
+
+function setArrayOptional(
+  searchParams: URLSearchParams,
+  key: string,
+  value?: string | string[]
+) {
+  if (!value) return;
+
+  const values = Array.isArray(value) ? value : [value];
+  values
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .forEach((item, index) => {
+      searchParams.set(`${key}[${index}]`, item);
+    });
 }

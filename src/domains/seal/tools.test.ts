@@ -92,6 +92,85 @@ describe("sealTools", () => {
     expect(result).toHaveProperty("records");
   });
 
+  test("approval run search can filter by extracted human result", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_runs_search");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { humanResult: "驳回", limit: 10 },
+      fakeContext()
+    ) as {
+      records: Array<{
+        sourceDocumentSN?: string;
+        humanResult?: string;
+        humanResultPath?: string;
+      }>;
+    };
+
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0]).toMatchObject({
+      sourceDocumentSN: "B26001965",
+      humanResult: "驳回",
+      humanResultPath: "result.manualApproval.result"
+    });
+  });
+
+  test("approval run search maps rejected human result to manual approval status", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_runs_search");
+    expect(tool).toBeDefined();
+
+    const requests: string[] = [];
+    const handler = tool!.handler as ToolHandler;
+    await handler(
+      fakeApprovalRunsClient(requests),
+      {
+        humanResult: "驳回",
+        startDate: "1774972800000",
+        endDate: "1781020799999",
+        limit: 50
+      },
+      fakeContext()
+    );
+
+    expect(requests[0]).toContain("startDate=1774972800000");
+    expect(requests[0]).toContain("endDate=1781020799999");
+    expect(requests[0]).toContain("manualApprovalStatus%5B0%5D=TERMINATED");
+  });
+
+  test("approval run get returns stable aliases for document concepts", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_get");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { recordId: "run-1" },
+      fakeContext()
+    ) as {
+      aliases?: {
+        originalDocumentData?: { path?: string; frontendLabel?: string };
+        aiDocumentFields?: { path?: string; frontendLabel?: string };
+        aiDocument?: { path?: string; aliasOf?: string };
+        sourceDocument?: { path?: string };
+        aiResult?: { path?: string };
+        aiAuditLog?: { path?: string };
+        manualApproval?: { path?: string };
+      };
+    };
+
+    expect(result.aliases).toMatchObject({
+      originalDocumentData: { path: "document", frontendLabel: "单据原始数据" },
+      aiDocumentFields: { path: "document.fields", frontendLabel: "AI 看的单据" },
+      aiDocument: { path: "document.fields", aliasOf: "aiDocumentFields" },
+      sourceDocument: { path: "sourceExtendData.hosecloudViewUrl" },
+      aiResult: { path: "result" },
+      aiAuditLog: { path: "pipelineData.logs" },
+      manualApproval: { path: "manualApprovalRecord" }
+    });
+  });
+
   test("approval run summary filters by local date and returns compact aggregates", async () => {
     const tool = sealTools.find((item) => item.name === "seal_approval_runs_summary");
     expect(tool).toBeDefined();
@@ -119,11 +198,41 @@ describe("sealTools", () => {
   });
 });
 
-function fakeApprovalRunsClient(): KyInstance {
+function fakeApprovalRunsClient(requests: string[] = []): KyInstance {
   return {
-    get: () => ({
+    get: (url: string, options?: { searchParams?: URLSearchParams }) => ({
       json: async () => ({
-        data: {
+        ...(requests.push(`${url}${options?.searchParams ? `?${options.searchParams}` : ""}`) ? {} : {}),
+        data: url === "api/v1/approvals/run-1"
+          ? {
+              id: "run-1",
+              status: "completed",
+              taskMode: "assisted",
+              sourceDocumentSN: "B26001965",
+              sourceDocumentId: "doc-source-1",
+              documentId: "normalized-doc-1",
+              document: {
+                id: "normalized-doc-1",
+                sourceDocumentSN: "B26001965",
+                sourceDocumentId: "doc-source-1",
+                fields: []
+              },
+              result: {
+                manualApproval: {
+                  result: "驳回"
+                }
+              },
+              pipelineData: {
+                logs: "audit logs"
+              },
+              sourceExtendData: {
+                _langfuseTraceId: "trace-1",
+                original_document_id: "B26001965",
+                hosecloudViewUrl: "https://app.ekuaibao.com/web/thirdparty.html"
+              },
+              createdAt: 1780898164536
+            }
+          : {
           total: 3,
           records: [
             {
@@ -141,6 +250,11 @@ function fakeApprovalRunsClient(): KyInstance {
               taskMode: "simulation",
               sourceDocumentSN: "B26001808",
               sourceDocumentId: "doc-source-2",
+              pipelineData: {
+                humanReview: {
+                  decision: "通过"
+                }
+              },
               createdAt: 1780887698055
             },
             {

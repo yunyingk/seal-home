@@ -259,10 +259,14 @@ export const sealTools = [
       limit: z.number().int().positive().max(100).optional(),
       fromTimestamp: z.string().optional(),
       toTimestamp: z.string().optional(),
+      startDate: z.string().optional().describe("运行记录创建开始时间戳（毫秒），对应前端 startDate"),
+      endDate: z.string().optional().describe("运行记录创建结束时间戳（毫秒），对应前端 endDate"),
       status: z.string().optional(),
       taskMode: z.string().optional(),
+      manualApprovalStatus: z.union([z.string(), z.array(z.string())]).optional().describe("人工审核状态，如 TERMINATED 对应已驳回"),
       sourceDocumentSN: z.string().optional(),
       sourceDocumentId: z.string().optional(),
+      humanResult: z.string().optional().describe("按人工审批结果做本地包含匹配，如 驳回、通过、reject"),
       query: z.string().optional().describe("在 id、sourceDocumentSN、sourceDocumentId、documentId、Langfuse traceId 中做本地包含匹配"),
       includeBridge: z.boolean().optional().describe("是否返回完整 bridge 数组；默认 false，避免长输出")
     }),
@@ -273,16 +277,23 @@ export const sealTools = [
         limit?: number;
         fromTimestamp?: string;
         toTimestamp?: string;
+        startDate?: string;
+        endDate?: string;
         status?: string;
         taskMode?: string;
+        manualApprovalStatus?: string | string[];
         sourceDocumentSN?: string;
         sourceDocumentId?: string;
+        humanResult?: string;
         query?: string;
         includeBridge?: boolean;
       }
     ) => {
-      const data = await api.listApprovalRuns(client, params);
-      const records = filterRuns(data.records, params.query);
+      const data = await api.listApprovalRuns(client, withApprovalRunFilters(params));
+      const records = await prepareApprovalRuns(client, data.records, {
+        query: params.query,
+        humanResult: params.humanResult
+      });
 
       return {
         ...data,
@@ -299,10 +310,14 @@ export const sealTools = [
       timezone: z.string().optional().describe("IANA 时区，默认 Asia/Shanghai"),
       offset: z.number().int().nonnegative().optional(),
       limit: z.number().int().positive().max(100).optional(),
+      startDate: z.string().optional().describe("运行记录创建开始时间戳（毫秒），对应前端 startDate"),
+      endDate: z.string().optional().describe("运行记录创建结束时间戳（毫秒），对应前端 endDate"),
       status: z.string().optional(),
       taskMode: z.string().optional(),
+      manualApprovalStatus: z.union([z.string(), z.array(z.string())]).optional().describe("人工审核状态，如 TERMINATED 对应已驳回"),
       sourceDocumentSN: z.string().optional(),
       sourceDocumentId: z.string().optional(),
+      humanResult: z.string().optional().describe("按人工审批结果做本地包含匹配，如 驳回、通过、reject"),
       query: z.string().optional().describe("在 id、sourceDocumentSN、sourceDocumentId、documentId、Langfuse traceId 中做本地包含匹配")
     }),
     handler: async (
@@ -312,10 +327,14 @@ export const sealTools = [
         timezone?: string;
         offset?: number;
         limit?: number;
+        startDate?: string;
+        endDate?: string;
         status?: string;
         taskMode?: string;
+        manualApprovalStatus?: string | string[];
         sourceDocumentSN?: string;
         sourceDocumentId?: string;
+        humanResult?: string;
         query?: string;
       }
     ) => {
@@ -324,14 +343,23 @@ export const sealTools = [
       const data = await api.listApprovalRuns(client, {
         offset: params.offset,
         limit: params.limit ?? 100,
+        startDate: params.startDate,
+        endDate: params.endDate,
         status: params.status,
         taskMode: params.taskMode,
+        manualApprovalStatus: resolveManualApprovalStatus(
+          params.manualApprovalStatus,
+          params.humanResult
+        ),
         sourceDocumentSN: params.sourceDocumentSN,
         sourceDocumentId: params.sourceDocumentId
       });
-      const records = filterRuns(data.records, params.query).filter(
-        (record) => localDateKey(record.createdAt, timezone) === date
-      );
+      const records = (
+        await prepareApprovalRuns(client, data.records, {
+          query: params.query,
+          humanResult: params.humanResult
+        })
+      ).filter((record) => localDateKey(record.createdAt, timezone) === date);
 
       return summarizeApprovalRuns(records, {
         date,
@@ -339,6 +367,24 @@ export const sealTools = [
         fetched: data.records.length,
         total: data.total
       });
+    }
+  },
+  {
+    name: "seal_approval_run_get",
+    description: "获取 Seal 单条审批/审核运行记录详情，用于查看 result、pipelineData 等列表接口省略的字段",
+    parameters: z.object({
+      recordId: z.string().describe("Seal approval run record ID")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { recordId: string }
+    ) => {
+      const record = await api.getApprovalRun(client, params.recordId);
+      return {
+        ...record,
+        aliases: approvalRunAliases(record),
+        humanResult: extractHumanResult(record)
+      };
     }
   },
   {
@@ -437,6 +483,7 @@ const sealActionNames = [
   "seal_approval_style_preferences_get",
   "seal_approval_style_preferences_update",
   "seal_approval_runs_summary",
+  "seal_approval_run_get",
   "seal_simulation_batch_records_get",
   "seal_approval_run_langfuse_bridge_get"
 ] as const;
@@ -456,6 +503,7 @@ const sealActionAliases: Record<string, (typeof sealActionNames)[number]> = {
   "style.get": "seal_approval_style_preferences_get",
   "style.update": "seal_approval_style_preferences_update",
   "runs.summary": "seal_approval_runs_summary",
+  "runs.get": "seal_approval_run_get",
   "batch.records.get": "seal_simulation_batch_records_get",
   "langfuse.bridge.get": "seal_approval_run_langfuse_bridge_get"
 };
@@ -560,6 +608,8 @@ type ApprovalRunSummary = {
   simulationBatchId?: string;
   langfuseTraceId?: string;
   langfuseSessionFallback?: string;
+  humanResult?: string;
+  humanResultPath?: string;
   createdAt?: string | number;
   updatedAt?: string | number;
 };
@@ -573,6 +623,7 @@ type ApprovalRunsSummaryOptions = {
 
 function summarizeApprovalRun(record: ApprovalRun): ApprovalRunSummary {
   const sourceDocumentSN = record.sourceDocumentSN;
+  const humanResult = extractHumanResult(record);
 
   return {
     id: record.id,
@@ -588,6 +639,8 @@ function summarizeApprovalRun(record: ApprovalRun): ApprovalRunSummary {
     simulationBatchId: record.sourceExtendData?.simulation_batch_id,
     langfuseTraceId: record.sourceExtendData?._langfuseTraceId,
     langfuseSessionFallback: sourceDocumentSN ? `hosecloud-${sourceDocumentSN}` : undefined,
+    humanResult: humanResult?.value,
+    humanResultPath: humanResult?.path,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };
@@ -614,6 +667,8 @@ function summarizeApprovalRuns(records: ApprovalRun[], options: ApprovalRunsSumm
         simulationBatchId: summary.simulationBatchId,
         langfuseTraceId: summary.langfuseTraceId,
         langfuseSessionFallback: summary.langfuseSessionFallback,
+        humanResult: summary.humanResult,
+        humanResultPath: summary.humanResultPath,
         recordId: summary.id
       };
     })
@@ -656,6 +711,203 @@ function filterRuns(records: ApprovalRun[], query?: string): ApprovalRun[] {
       record.sourceExtendData?.simulation_batch_id
     ].some((value) => value?.toLowerCase().includes(normalized))
   );
+}
+
+function filterRunsByHumanResult(records: ApprovalRun[], humanResult?: string): ApprovalRun[] {
+  const normalized = humanResult?.trim().toLowerCase();
+  if (!normalized) return records;
+
+  return records.filter((record) =>
+    extractHumanResult(record)?.value.toLowerCase().includes(normalized)
+  );
+}
+
+function withApprovalRunFilters<T extends {
+  manualApprovalStatus?: string | string[];
+  humanResult?: string;
+}>(params: T) {
+  return {
+    ...params,
+    manualApprovalStatus: resolveManualApprovalStatus(
+      params.manualApprovalStatus,
+      params.humanResult
+    )
+  };
+}
+
+function resolveManualApprovalStatus(
+  manualApprovalStatus?: string | string[],
+  humanResult?: string
+): string | string[] | undefined {
+  if (manualApprovalStatus) return manualApprovalStatus;
+
+  const normalized = humanResult?.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (["驳回", "已驳回", "拒绝", "不通过", "terminated", "reject", "rejected", "denied"].includes(normalized)) {
+    return "TERMINATED";
+  }
+
+  return undefined;
+}
+
+async function prepareApprovalRuns(
+  client: KyInstance,
+  records: ApprovalRun[],
+  filters: {
+    query?: string;
+    humanResult?: string;
+  }
+): Promise<ApprovalRun[]> {
+  const queriedRecords = filterRuns(records, filters.query);
+  if (!filters.humanResult?.trim()) return queriedRecords;
+
+  const detailedRecords = await Promise.all(
+    queriedRecords.map(async (record) => {
+      if (extractHumanResult(record)) return record;
+
+      try {
+        return await api.getApprovalRun(client, record.id);
+      } catch {
+        return record;
+      }
+    })
+  );
+
+  return filterRunsByHumanResult(detailedRecords, filters.humanResult);
+}
+
+type HumanResultMatch = {
+  value: string;
+  path: string;
+};
+
+function approvalRunAliases(record: ApprovalRun) {
+  return {
+    originalDocumentData: {
+      path: "document",
+      frontendLabel: "单据原始数据",
+      description: "前端详情页展示的单据原始数据对象",
+      id: record.document?.id ?? record.documentId,
+      sourceDocumentSN: record.document?.sourceDocumentSN ?? record.sourceDocumentSN,
+      sourceDocumentId: record.document?.sourceDocumentId ?? record.sourceDocumentId
+    },
+    aiDocumentFields: {
+      path: "document.fields",
+      frontendLabel: "AI 看的单据",
+      description: "AI 审核实际读取的字段数组，即单据原始数据中的 fields",
+      fieldCount: record.document?.fields?.length
+    },
+    aiDocument: {
+      path: "document.fields",
+      frontendLabel: "AI 看的单据",
+      description: "兼容别名，等同于 aiDocumentFields",
+      aliasOf: "aiDocumentFields",
+      fieldCount: record.document?.fields?.length
+    },
+    sourceDocument: {
+      path: "sourceExtendData.hosecloudViewUrl",
+      description: "合思原始单据入口；详情响应中只有入口和源单据 ID，不包含完整原始单据 JSON",
+      sourceSystem: record.sourceSystem,
+      sourceDocumentSN: record.sourceDocumentSN,
+      sourceDocumentId: record.sourceDocumentId,
+      originalDocumentId: record.sourceExtendData?.original_document_id,
+      viewUrl: record.sourceExtendData?.hosecloudViewUrl
+    },
+    aiResult: {
+      path: "result",
+      description: "AI 最终审核结构化结果"
+    },
+    aiAuditLog: {
+      path: "pipelineData.logs",
+      description: "AI 审核过程日志"
+    },
+    manualApproval: {
+      path: "manualApprovalRecord",
+      description: "人工审核结果、节点和驳回原因"
+    }
+  };
+}
+
+function extractHumanResult(record: ApprovalRun): HumanResultMatch | undefined {
+  const roots: Array<[string, unknown]> = [
+    ["result", record.result],
+    ["pipelineData", record.pipelineData]
+  ];
+
+  for (const [path, value] of roots) {
+    const match = findHumanResultValue(value, path);
+    if (match) return match;
+  }
+
+  return undefined;
+}
+
+function findHumanResultValue(
+  value: unknown,
+  path: string,
+  depth = 0
+): HumanResultMatch | undefined {
+  if (depth > 8 || value === null || value === undefined) return undefined;
+
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      const match = findHumanResultValue(value[index], `${path}[${index}]`, depth + 1);
+      if (match) return match;
+    }
+    return undefined;
+  }
+
+  if (typeof value !== "object") return undefined;
+
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const childPath = `${path}.${key}`;
+    const match = findHumanResultValue(child, childPath, depth + 1);
+    if (match) return match;
+
+    if (isHumanResultKey(key) || isHumanResultKey(childPath)) {
+      const text = stringifyHumanResultValue(child);
+      if (text) return { value: text, path: childPath };
+    }
+  }
+
+  return undefined;
+}
+
+function isHumanResultKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  const isHuman =
+    normalized.includes("human") ||
+    normalized.includes("manual") ||
+    normalized.includes("reviewer") ||
+    normalized.includes("operator") ||
+    key.includes("人工") ||
+    key.includes("人工审批") ||
+    key.includes("人工审核");
+  const isResult =
+    normalized.includes("result") ||
+    normalized.includes("decision") ||
+    normalized.includes("outcome") ||
+    normalized.includes("conclusion") ||
+    normalized.includes("action") ||
+    key.includes("结果") ||
+    key.includes("结论") ||
+    key.includes("动作");
+
+  return isHuman && isResult;
+}
+
+function stringifyHumanResultValue(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (!value || typeof value !== "object") return undefined;
+
+  const object = value as Record<string, unknown>;
+  for (const key of ["label", "name", "text", "value", "result", "decision", "outcome", "status", "action"]) {
+    const text = stringifyHumanResultValue(object[key]);
+    if (text) return text;
+  }
+
+  return undefined;
 }
 
 function matchesRunLookup(

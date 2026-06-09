@@ -95,10 +95,14 @@ async function main() {
       date: stringOption(args.options.date),
       timezone: stringOption(args.options.timezone),
       limit: numberOption(args.options.limit),
+      startDate: stringOption(args.options.startDate),
+      endDate: stringOption(args.options.endDate),
       status: stringOption(args.options.status),
       taskMode: stringOption(args.options.taskMode),
+      manualApprovalStatus: stringOption(args.options.manualApprovalStatus),
       sourceDocumentSN: stringOption(args.options.sourceDocumentSN),
       sourceDocumentId: stringOption(args.options.sourceDocumentId),
+      humanResult: stringOption(args.options.humanResult),
       query: stringOption(args.options.query)
     });
     return;
@@ -108,10 +112,14 @@ async function main() {
     await runTool("seal_approval_runs_search", client, corp, {
       limit: numberOption(args.options.limit),
       offset: numberOption(args.options.offset),
+      startDate: stringOption(args.options.startDate),
+      endDate: stringOption(args.options.endDate),
       status: stringOption(args.options.status),
       taskMode: stringOption(args.options.taskMode),
+      manualApprovalStatus: stringOption(args.options.manualApprovalStatus),
       sourceDocumentSN: stringOption(args.options.sourceDocumentSN),
       sourceDocumentId: stringOption(args.options.sourceDocumentId),
+      humanResult: stringOption(args.options.humanResult),
       query: stringOption(args.options.query),
       includeBridge: booleanOption(args.options.includeBridge)
     });
@@ -126,6 +134,13 @@ async function main() {
       simulationBatchId: stringOption(args.options.simulationBatchId),
       limit: numberOption(args.options.limit)
     });
+    return;
+  }
+
+  if (area === "approval-runs" && action === "get") {
+    const recordId = args.command[2];
+    if (!recordId) throw new Error("Missing approval run recordId");
+    await runTool("seal_approval_run_get", client, corp, { recordId });
     return;
   }
 
@@ -413,7 +428,8 @@ Usage:
   seal-home source config [--corp <corpId>]
   seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
   seal-home approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
-  seal-home approval-runs search [--query text] [--limit 20] [--includeBridge true]
+  seal-home approval-runs search [--query text] [--humanResult 驳回] [--manualApprovalStatus TERMINATED] [--startDate ms] [--endDate ms] [--limit 20] [--includeBridge true]
+  seal-home approval-runs get <recordId>
   seal-home approval-runs bridge [--sourceDocumentSN B26001887]
   seal-home simulation batch-records <batchId>
 `);
