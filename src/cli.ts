@@ -5,11 +5,12 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getEnterprisesDirCandidates, loadCorpConfigs, USER_ENTERPRISES_DIR } from "./core/config/loader.js";
+import { getEnterprisesDirCandidates, loadCorpConfigs, resolveWritableEnterprisesDir } from "./core/config/loader.js";
 import { createSealClient } from "./core/http/factory.js";
 import { resolveLiveSealEnterpriseConfig } from "./domains/seal/source.js";
 import { sealTools, type SealTool } from "./domains/seal/tools.js";
 import { CorpConfig } from "./core/config/types.js";
+import { clearCorpTokenCache } from "./core/auth/token-store.js";
 
 const VERSION = "0.3.0";
 const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -101,7 +102,7 @@ async function main() {
   }
 
   if (area === "corps" && action === "add-hose") {
-    addHoseCorp(jsonObject(args.json));
+    await addHoseCorp(jsonObject(args.json));
     return;
   }
 
@@ -407,15 +408,28 @@ function readCurrentCorpId(): string | undefined {
   return value || undefined;
 }
 
-function addHoseCorp(input: Record<string, unknown>) {
-  const id = requiredString(input, "id");
-  const name = requiredString(input, "name");
+async function addHoseCorp(input: Record<string, unknown>) {
+  const nameInput = optionalString(input, "name");
   const appKey = requiredString(input, "appKey");
   const appSecurity = requiredString(input, "appSecurity");
-  const corpId = requiredString(input, "corpId");
-  const staffId = requiredString(input, "staffId");
+  const staffId = requiredStringAlias(input, ["staffId", "proxyStaffBizId"]);
+  const corpIdInput =
+    optionalString(input, "corpId") ??
+    optionalString(input, "corporationId");
   const domain = optionalString(input, "domain") ?? "https://app.ekuaibao.com";
-  const sealUrl = optionalString(input, "sealUrl") ?? `https://${id.toLowerCase()}.sealai.cc`;
+  const verify = input.force === true || input.verify === false ? false : true;
+  const remote = corpIdInput && !verify
+    ? undefined
+    : await resolveHoseCorporation(domain, appKey, appSecurity);
+  const corpId = corpIdInput ?? remote?.id ?? (!verify ? inferCorpIdFromStaffId(staffId) : undefined);
+  if (!corpId) {
+    throw new Error(
+      "Missing required JSON field: corpId. Hose login did not return corporationId. Pass force:true to infer it from proxyStaffBizId."
+    );
+  }
+  const id = optionalString(input, "id") ?? corpId;
+  const name = nameInput ?? remote?.name ?? corpId;
+  const sealUrl = optionalString(input, "sealUrl") ?? `https://${corpId.toLowerCase()}.sealai.cc`;
 
   const config: CorpConfig = {
     id,
@@ -439,8 +453,14 @@ function addHoseCorp(input: Record<string, unknown>) {
     }
   };
 
-  mkdirSync(USER_ENTERPRISES_DIR, { recursive: true, mode: 0o700 });
-  const file = join(USER_ENTERPRISES_DIR, `${safeFileName(id)}.json`);
+  if (verify) {
+    clearCorpTokenCache(id);
+    await resolveLiveSealEnterpriseConfig(config);
+  }
+
+  const enterprisesDir = resolveWritableEnterprisesDir();
+  mkdirSync(enterprisesDir, { recursive: true, mode: 0o700 });
+  const file = join(enterprisesDir, `${safeFileName(id)}.json`);
   if (existsSync(file) && input.overwrite !== true) {
     throw new Error(`Enterprise config already exists: ${file}. Pass "overwrite": true to replace it.`);
   }
@@ -449,6 +469,8 @@ function addHoseCorp(input: Record<string, unknown>) {
   printJson({
     id,
     name,
+    corpId,
+    verified: verify,
     path: file
   });
 }
@@ -459,9 +481,57 @@ function requiredString(input: Record<string, unknown>, key: string): string {
   return value;
 }
 
+function requiredStringAlias(input: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = optionalString(input, key);
+    if (value) return value;
+  }
+  throw new Error(`Missing required JSON field: ${keys.join(" or ")}`);
+}
+
 function optionalString(input: Record<string, unknown>, key: string): string | undefined {
   const value = input[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function inferCorpIdFromStaffId(staffId: string): string | undefined {
+  const [corpId] = staffId.split(":", 1);
+  return corpId || undefined;
+}
+
+async function resolveHoseCorporation(domain: string, appKey: string, appSecurity: string) {
+  const response = await fetch(`${domain.replace(/\/+$/, "")}/api/openapi/v1/auth/getAccessToken`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      appKey,
+      appSecurity
+    })
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Hose login failed: ${response.status}${body ? ` ${body}` : ""}`);
+  }
+
+  const data = await response.json() as {
+    value?: {
+      corporationId?: string;
+      corporation?: {
+        id?: string;
+        name?: string;
+      };
+    };
+  };
+  const corporationId = data.value?.corporationId ?? data.value?.corporation?.id;
+  return corporationId
+    ? {
+      id: corporationId,
+      name: data.value?.corporation?.name
+    }
+    : undefined;
 }
 
 function safeFileName(value: string): string {
@@ -612,7 +682,7 @@ Usage:
   seal-home corps list [--corp <corpId>]
   seal-home corps current
   seal-home corps switch <corpId>
-  seal-home corps add-hose --json '{"id":"corp-id","name":"企业名称","appKey":"...","appSecurity":"...","corpId":"...","staffId":"..."}'
+  seal-home corps add-hose --json '{"name":"企业名称","domain":"https://app.ekuaibao.com","appKey":"...","appSecurity":"...","proxyStaffBizId":"corpId:staffId"}'
   seal-home source config [--corp <corpId>]
   seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
   seal-home rules versions [--corp <corpId>]
@@ -629,6 +699,12 @@ Usage:
 }
 
 main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
+  console.error(redactSensitiveText(error instanceof Error ? error.message : String(error)));
   process.exit(1);
 });
+
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(/([?&](?:accessToken|token|returnToken)=)[^&\s]+/gi, "$1<redacted>")
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi, "$1<redacted>");
+}
