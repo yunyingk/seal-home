@@ -5,7 +5,7 @@ import {
   ListToolsRequestSchema
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { loadCorpConfigs } from "./core/config/loader.js";
+import { getEnterprisesDirCandidates, loadCorpConfigs } from "./core/config/loader.js";
 import { CorpContext } from "./core/config/manager.js";
 import { createSealClient } from "./core/http/factory.js";
 import { resolveLiveSealEnterpriseConfig } from "./domains/seal/source.js";
@@ -70,7 +70,8 @@ async function main() {
       return textResult(
         {
           error:
-            "No enterprise config loaded. Add a non-example JSON file under enterprises/."
+            "No enterprise config loaded. Add a non-example JSON file to an enterprises config directory.",
+          candidates: getEnterprisesDirCandidates()
         },
         true
       );

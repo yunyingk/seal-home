@@ -2,7 +2,7 @@
 
 Version: `0.3.0`
 
-Bun + TypeScript MCP server for pulling Seal enterprise approval context from provider credentials.
+Bun + TypeScript CLI and optional local service for pulling Seal enterprise approval context from provider credentials.
 
 The first provider is Hose/合思: `key`, `password`, `corpId`, `staffId`, and an optional Hose domain. The provider exchanges those credentials for a Seal enterprise session, then the Seal domain tools can read and maintain approval rules, approval documents, and approval style preferences.
 
@@ -22,26 +22,37 @@ For an already-authenticated Seal source, copy `enterprises/example.direct.json`
 
 ## Public Usage
 
-This repository is intended to be published as a local agent toolkit. Users run the CLI and MCP server on their own machine with their own enterprise credentials; do not deploy the stdio MCP server as a shared public service without adding authentication, tenant isolation, credential storage, audit logging, and write-operation controls.
+This repository is intended to be published as a macOS local agent toolkit. Users run the global `seal-home` CLI on their own machine with their own enterprise credentials. Do not deploy it as a shared public service without adding authentication, tenant isolation, credential storage, audit logging, and write-operation controls.
+
+Install the global CLI from a checkout:
 
 ```bash
 git clone <repo-url>
 cd seal-home
 bun install
-cp enterprises/example.hose.json enterprises/local.json
-# Edit enterprises/local.json with your own Hose/Seal credentials.
-bun run cli -- source config
-bun run cli -- tools list
+bun link
+seal-home version
 ```
+
+Create a user-level enterprise config that works from any directory:
+
+```bash
+mkdir -p ~/.config/seal-home/enterprises
+cp enterprises/example.hose.json ~/.config/seal-home/enterprises/local.json
+# Edit ~/.config/seal-home/enterprises/local.json with your own Hose/Seal credentials.
+seal-home source config
+seal-home tools list
+```
+
+For custom config locations, set `SEAL_HOME_ENTERPRISES_DIR` to a directory containing non-example `*.json` enterprise config files.
 
 Update an existing checkout:
 
 ```bash
-git pull
-bun install
-bun run cli -- version
-bun run cli -- tools list
+seal-home update
 ```
+
+`seal-home update` runs `git pull --ff-only`, installs dependencies, and restarts the local service if it was running.
 
 Local enterprise config files are ignored by git:
 
@@ -54,16 +65,42 @@ The standard Codex skill lives at `skills/seal-home`. Install or copy that folde
 
 ## CLI
 
-The MCP server and CLI are separate entry points. Use MCP for protocol-native clients; use the CLI from skills, shell scripts, or agents that prefer command execution. CLI intentionally keeps the full fine-grained tool list available through `seal-home tool <toolName>`; only the MCP exported tool surface is narrowed for model context size.
+Use the CLI from skills, shell scripts, or agents. CLI intentionally keeps the full fine-grained tool list available through `seal-home tool <toolName>`.
 
 ```bash
-bun run cli -- tools list
-bun run cli -- corps list
-bun run cli -- approval-runs summary --date 2026-06-08 --timezone Asia/Shanghai
-bun run cli -- tool seal_approval_runs_summary --json '{"date":"2026-06-08","timezone":"Asia/Shanghai"}'
+seal-home version
+seal-home config paths
+seal-home tools list
+seal-home corps list
+seal-home approval-runs summary --date 2026-06-08 --timezone Asia/Shanghai
+seal-home tool seal_approval_runs_summary --json '{"date":"2026-06-08","timezone":"Asia/Shanghai"}'
 ```
 
 CLI output is JSON on stdout. Errors are written to stderr.
+
+Enterprise config lookup order:
+
+1. `SEAL_HOME_ENTERPRISES_DIR`
+2. `./enterprises` in the current working directory
+3. `~/.config/seal-home/enterprises`
+
+## Local Service
+
+For macOS users who want a long-lived local background process and a simple restart point after updates:
+
+```bash
+seal-home service start
+seal-home service status
+seal-home service restart
+seal-home service stop
+```
+
+Service state is stored under `~/.config/seal-home/`:
+
+- `service.pid`
+- `service.log`
+
+The service is intentionally local. It is useful as a stable process lifecycle for future warmed caches and update/restart workflows; normal CLI commands still work without it.
 
 ## Enterprise Config
 
@@ -91,7 +128,11 @@ CLI output is JSON on stdout. Errors are written to stderr.
 }
 ```
 
-## MCP Tools
+## Developer MCP Notes
+
+Most users do not need MCP. The public/shared path is the global `seal-home` CLI plus the optional local service.
+
+For protocol-native development clients, the MCP server intentionally keeps a narrow exported surface:
 
 - `seal_corp_switch`: switch the active local enterprise config.
 - `seal_whoami`: current Seal user and tenant.
@@ -111,12 +152,12 @@ CLI output is JSON on stdout. Errors are written to stderr.
 }
 ```
 
-## CLI/Internal Tools
+## CLI Tools
 
-These tools remain available to the CLI and are also accepted by the MCP call handler for compatibility, but most are no longer advertised by MCP `tools/list`:
+These tools remain available to the CLI:
 
 - `seal_source_config`: resolve current Seal enterprise config from the configured source.
-- `seal_approval_runs_search`: full internal name behind the MCP `seal_runs_search` alias.
+- `seal_approval_runs_search`: search approval run history and optional bridge rows.
 - `seal_session_get`: current Seal Bearer session and expiration.
 - `seal_approval_rules_list`: current draft approval rules.
 - `seal_approval_rule_create`, `seal_approval_rule_update`, `seal_approval_rule_delete`: maintain approval rules.
@@ -148,10 +189,10 @@ When `_langfuseTraceId` exists, downstream tools should fetch the trace directly
 
 ## Engineering Notes
 
-- Prefer Bun-native commands in this repository: `bun run check`, `bun test`, and `bun run cli -- ...`. `npm run check` may work, but Bun is the project runtime and lockfile owner.
-- Keep MCP and CLI as thin entry points. Shared behavior belongs in `src/core` and `src/domains`; `src/server.ts` should only handle MCP protocol concerns, and `src/cli.ts` should only handle command parsing and JSON output.
+- Prefer Bun-native commands in this repository: `bun run check`, `bun test`, and `seal-home ...`. `npm run check` may work, but Bun is the project runtime and lockfile owner.
+- Keep CLI entry points thin. Shared behavior belongs in `src/core` and `src/domains`; `src/cli.ts` should only handle command parsing, process lifecycle, and JSON output.
 - Do not print diagnostic text to stdout from the MCP server. MCP uses stdout as the protocol stream; use stderr for server diagnostics.
-- Keep the MCP exported surface narrow. High-frequency read tools can be direct MCP tools; low-frequency maintenance should go through `seal_action` or CLI commands.
-- Prefer CLI or script processing for large tool responses. For daily approval questions, call `seal_action` with `runs.summary` or `bun run cli -- approval-runs summary ...` instead of reading long `seal_approval_runs_search` output manually.
+- Keep any MCP exported surface narrow. High-frequency read tools can be direct MCP tools; low-frequency maintenance should go through `seal_action` or CLI commands.
+- Prefer CLI or script processing for large tool responses. For daily approval questions, call `seal-home approval-runs summary ...` instead of reading long `seal_approval_runs_search` output manually.
 - Keep broad search tools compact by default. Add explicit opt-in flags such as `includeBridge` for verbose fields that are useful only in deeper debugging.
 - When Seal API timestamp filters are uncertain, filter again in tool code by `createdAt` and explicit timezone before presenting date-based answers.

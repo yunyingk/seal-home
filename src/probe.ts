@@ -1,4 +1,4 @@
-import { loadCorpConfigs } from "./core/config/loader.js";
+import { getEnterprisesDirCandidates, loadCorpConfigs } from "./core/config/loader.js";
 import { createSealClient } from "./core/http/factory.js";
 import { resolveLiveSealEnterpriseConfig } from "./domains/seal/source.js";
 import { getApprovalContext } from "./domains/seal/api.js";
@@ -14,7 +14,7 @@ async function main() {
     throw new Error(
       corpId
         ? `No enterprise config found for ${corpId}`
-        : "No enterprise config found. Add enterprises/local.json first."
+        : `No enterprise config found. Add a config file under one of: ${getEnterprisesDirCandidates().join(", ")}`
     );
   }
 

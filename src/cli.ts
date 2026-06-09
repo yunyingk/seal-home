@@ -1,12 +1,21 @@
 #!/usr/bin/env bun
 
-import { loadCorpConfigs } from "./core/config/loader.js";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { getEnterprisesDirCandidates, loadCorpConfigs } from "./core/config/loader.js";
 import { createSealClient } from "./core/http/factory.js";
 import { resolveLiveSealEnterpriseConfig } from "./domains/seal/source.js";
 import { sealTools, type SealTool } from "./domains/seal/tools.js";
 import { CorpConfig } from "./core/config/types.js";
 
 const VERSION = "0.3.0";
+const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
+const STATE_DIR = join(homedir(), ".config", "seal-home");
+const SERVICE_PID_FILE = join(STATE_DIR, "service.pid");
+const SERVICE_LOG_FILE = join(STATE_DIR, "service.log");
 
 type ParsedArgs = {
   command: string[];
@@ -28,6 +37,23 @@ async function main() {
       name: "seal-home",
       version: VERSION
     });
+    return;
+  }
+
+  if (area === "config" && action === "paths") {
+    printJson({
+      candidates: getEnterprisesDirCandidates()
+    });
+    return;
+  }
+
+  if (area === "service") {
+    await runServiceCommand(action);
+    return;
+  }
+
+  if (area === "update") {
+    updateAndRestart();
     return;
   }
 
@@ -116,6 +142,140 @@ async function main() {
   throw new Error(`Unknown command: ${args.command.join(" ")}`);
 }
 
+async function runServiceCommand(action?: string) {
+  switch (action) {
+    case "run":
+      await runService();
+      return;
+    case "start":
+      startService();
+      return;
+    case "stop":
+      stopService();
+      return;
+    case "restart":
+      stopService({ quiet: true });
+      startService();
+      return;
+    case "status":
+    case undefined:
+      printJson(serviceStatus());
+      return;
+    default:
+      throw new Error("Usage: seal-home service <start|stop|restart|status>");
+  }
+}
+
+async function runService() {
+  ensureStateDir();
+  writeFileSync(SERVICE_PID_FILE, `${process.pid}\n`);
+  appendLog(`running pid=${process.pid}`);
+
+  const cleanup = () => {
+    if (readServicePid() === process.pid) {
+      rmSync(SERVICE_PID_FILE, { force: true });
+    }
+    appendLog(`stopped pid=${process.pid}`);
+  };
+
+  process.on("SIGTERM", () => {
+    cleanup();
+    process.exit(0);
+  });
+  process.on("SIGINT", () => {
+    cleanup();
+    process.exit(0);
+  });
+
+  setInterval(() => {
+    // Keep the process alive for warmed auth/search caches in this runtime.
+  }, 60_000);
+
+  await new Promise(() => {});
+}
+
+function startService() {
+  ensureStateDir();
+  const current = serviceStatus();
+  if (current.running) {
+    printJson(current);
+    return;
+  }
+
+  const child = spawn(process.execPath, [fileURLToPath(import.meta.url), "service", "run"], {
+    cwd: APP_ROOT,
+    detached: true,
+    stdio: ["ignore", "ignore", "ignore"],
+    env: process.env
+  });
+  child.unref();
+
+  writeFileSync(SERVICE_PID_FILE, `${child.pid}\n`);
+  appendLog(`started pid=${child.pid}`);
+  printJson({
+    started: true,
+    ...serviceStatus()
+  });
+}
+
+function stopService(options: { quiet?: boolean } = {}) {
+  const pid = readServicePid();
+  if (!pid) {
+    if (!options.quiet) printJson({ stopped: false, reason: "not running" });
+    return;
+  }
+
+  if (isProcessRunning(pid)) {
+    process.kill(pid, "SIGTERM");
+  }
+  rmSync(SERVICE_PID_FILE, { force: true });
+  appendLog(`stop requested pid=${pid}`);
+
+  if (!options.quiet) {
+    printJson({ stopped: true, pid });
+  }
+}
+
+function serviceStatus() {
+  const pid = readServicePid();
+  return {
+    running: pid ? isProcessRunning(pid) : false,
+    pid,
+    version: VERSION,
+    appRoot: APP_ROOT,
+    stateDir: STATE_DIR,
+    pidFile: SERVICE_PID_FILE,
+    logFile: SERVICE_LOG_FILE
+  };
+}
+
+function updateAndRestart() {
+  const wasRunning = serviceStatus().running;
+  if (wasRunning) stopService({ quiet: true });
+
+  runCommand("git", ["-C", APP_ROOT, "pull", "--ff-only"]);
+  runCommand("bun", ["install"], { cwd: APP_ROOT });
+
+  if (wasRunning) startService();
+
+  printJson({
+    updated: true,
+    serviceRestarted: wasRunning,
+    version: VERSION
+  });
+}
+
+function runCommand(command: string, args: string[], options: { cwd?: string } = {}) {
+  const result = spawnSync(command, args, {
+    cwd: options.cwd,
+    stdio: "inherit"
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`${command} ${args.join(" ")} failed with status ${result.status}`);
+  }
+}
+
 async function runTool(
   name: string,
   client: Awaited<ReturnType<typeof createSealClient>>,
@@ -143,7 +303,7 @@ function selectCorp(corpId: string): CorpConfig {
     throw new Error(
       corpId
         ? `No enterprise config found for ${corpId}`
-        : "No enterprise config found. Add a non-example JSON file under enterprises/."
+        : `No enterprise config found. Add a non-example JSON file under one of: ${getEnterprisesDirCandidates().join(", ")}`
     );
   }
 
@@ -212,6 +372,30 @@ function booleanOption(value: string | boolean | undefined): boolean | undefined
   throw new Error(`Invalid boolean: ${value}`);
 }
 
+function ensureStateDir() {
+  mkdirSync(STATE_DIR, { recursive: true });
+}
+
+function readServicePid(): number | undefined {
+  if (!existsSync(SERVICE_PID_FILE)) return undefined;
+  const pid = Number(readFileSync(SERVICE_PID_FILE, "utf-8").trim());
+  return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+}
+
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function appendLog(message: string) {
+  ensureStateDir();
+  writeFileSync(SERVICE_LOG_FILE, `${new Date().toISOString()} ${message}\n`, { flag: "a" });
+}
+
 function printJson(value: unknown) {
   console.log(JSON.stringify(value, null, 2));
 }
@@ -221,6 +405,9 @@ function printHelp() {
 
 Usage:
   seal-home version
+  seal-home config paths
+  seal-home service <start|stop|restart|status>
+  seal-home update
   seal-home tools list
   seal-home corps list [--corp <corpId>]
   seal-home source config [--corp <corpId>]

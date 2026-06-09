@@ -1,28 +1,37 @@
 # Seal Home CLI Reference
 
-Run from the repository root:
+Run from any directory after installing the global CLI:
 
 ```bash
-bun run cli -- <command>
+seal-home <command>
 ```
+
+Enterprise config lookup order:
+
+1. `SEAL_HOME_ENTERPRISES_DIR`
+2. `./enterprises` in the current working directory
+3. `~/.config/seal-home/enterprises`
 
 ## Top-Level Commands
 
 ```bash
-bun run cli -- version
-bun run cli -- tools list
-bun run cli -- corps list [--corp <corpId>]
-bun run cli -- source config [--corp <corpId>]
-bun run cli -- tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
-bun run cli -- approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
-bun run cli -- approval-runs search [--query text] [--limit 20] [--includeBridge true]
-bun run cli -- approval-runs bridge [--sourceDocumentSN B26001887]
-bun run cli -- simulation batch-records <batchId>
+seal-home version
+seal-home config paths
+seal-home service <start|stop|restart|status>
+seal-home update
+seal-home tools list
+seal-home corps list [--corp <corpId>]
+seal-home source config [--corp <corpId>]
+seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
+seal-home approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
+seal-home approval-runs search [--query text] [--limit 20] [--includeBridge true]
+seal-home approval-runs bridge [--sourceDocumentSN B26001887]
+seal-home simulation batch-records <batchId>
 ```
 
 ## Fine-Grained Tools
 
-`bun run cli -- version` returns:
+`seal-home version` returns:
 
 ```json
 {
@@ -30,6 +39,10 @@ bun run cli -- simulation batch-records <batchId>
   "version": "0.3.0"
 }
 ```
+
+`seal-home service status` returns the PID, version, state directory, PID file, and log file for the optional local background process.
+
+`seal-home update` updates the git checkout, runs `bun install`, and restarts the local service if it was running.
 
 Identity and session:
 
@@ -74,49 +87,49 @@ Approval runs, simulations, and Langfuse bridge:
 Search approval content:
 
 ```bash
-bun run cli -- tool seal_approval_search --json '{"keywords":["关键词"],"matchMode":"any","maxResults":20}'
+seal-home tool seal_approval_search --json '{"keywords":["关键词"],"matchMode":"any","maxResults":20}'
 ```
 
 Get aggregated approval context:
 
 ```bash
-bun run cli -- tool seal_approval_context_get --json '{"documentLimit":20}'
+seal-home tool seal_approval_context_get --json '{"documentLimit":20}'
 ```
 
 Create a draft approval rule:
 
 ```bash
-bun run cli -- tool seal_approval_rule_create --json '{"description":"规则描述","scope":"适用场景","strictness":"SHOULD_FOLLOW"}'
+seal-home tool seal_approval_rule_create --json '{"description":"规则描述","scope":"适用场景","strictness":"SHOULD_FOLLOW"}'
 ```
 
 Update an approval document:
 
 ```bash
-bun run cli -- tool seal_approval_document_update --json '{"documentId":"doc-id","content":"Markdown 内容"}'
+seal-home tool seal_approval_document_update --json '{"documentId":"doc-id","content":"Markdown 内容"}'
 ```
 
 Summarize one local date:
 
 ```bash
-bun run cli -- approval-runs summary --date 2026-06-09 --timezone Asia/Shanghai --limit 100
+seal-home approval-runs summary --date 2026-06-09 --timezone Asia/Shanghai --limit 100
 ```
 
 Find a run and include Langfuse bridge rows:
 
 ```bash
-bun run cli -- approval-runs search --query B26001887 --limit 20 --includeBridge true
+seal-home approval-runs search --query B26001887 --limit 20 --includeBridge true
 ```
 
 Resolve Langfuse trace/session hints:
 
 ```bash
-bun run cli -- approval-runs bridge --sourceDocumentSN B26001887
+seal-home approval-runs bridge --sourceDocumentSN B26001887
 ```
 
 Read simulation batch records:
 
 ```bash
-bun run cli -- simulation batch-records <batchId>
+seal-home simulation batch-records <batchId>
 ```
 
 ## Write Operation Payloads
@@ -194,7 +207,7 @@ Update style preferences:
 
 ## Failure Handling
 
-- CLI commands are short-lived processes. In-memory auth/search caches only live for that single process. The MCP server is long-lived, so it can reuse in-memory caches across tool calls until refresh or TTL expiry.
+- CLI commands are short-lived processes. In-memory auth/search caches only live for that single process. Use `seal-home service restart` after updates so the optional local service picks up new code.
 - If no run is found by `sourceDocumentSN`, retry with `sourceDocumentId` or a broader `query`.
 - If date-based summaries look wrong, pass `--timezone Asia/Shanghai` and an explicit `--date`.
 - If `langfuseTraceId` is missing, use `langfuseSessionFallback`.

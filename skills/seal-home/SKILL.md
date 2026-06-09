@@ -1,32 +1,46 @@
 ---
 name: seal-home
-description: Use when working with Seal Home / seal-home approval automation: querying Seal enterprise identity, approval rules, approval knowledge documents, approval style preferences, approval run history, simulation batch records, and Langfuse trace/session bridge hints. Prefer this skill when the user mentions Seal, seal_home MCP, 合思/易快报 approval runs, approval rule/document maintenance, approval simulations, or debugging Seal approval execution traces.
+description: Use when working with the Seal Home / seal-home CLI and local service for approval automation: querying Seal enterprise identity, approval rules, approval knowledge documents, approval style preferences, approval run history, simulation batch records, and Langfuse trace/session bridge hints. Prefer this skill when the user mentions Seal, seal-home, 合思/易快报 approval runs, approval rule/document maintenance, approval simulations, updating/restarting the seal-home service, or debugging Seal approval execution traces.
 ---
 
 # Seal Home
 
 ## Quick Start
 
-Run commands from the seal-home repository root:
+Use the global `seal-home` CLI. It should work from any directory after installation:
 
 ```bash
-bun run cli -- help
-bun run cli -- version
-bun run cli -- tools list
+seal-home help
+seal-home version
+seal-home tools list
 ```
 
-Use CLI for broad or detailed operations. Use MCP for narrow, high-frequency agent entry points only. The CLI intentionally exposes the full fine-grained tool list; MCP intentionally advertises a small surface to reduce model context.
+Use CLI for broad or detailed operations. The CLI intentionally exposes the full fine-grained tool list and is the primary interface for shared/public use.
+
+Enterprise configs are loaded from `SEAL_HOME_ENTERPRISES_DIR`, `./enterprises`, or `~/.config/seal-home/enterprises`, in that order. Prefer user-level config for shared/public installs so commands do not depend on the repository working directory.
+
+Optional local service commands:
+
+```bash
+seal-home service start
+seal-home service status
+seal-home service restart
+seal-home service stop
+seal-home update
+```
+
+Use `seal-home update` after pulling new versions; it restarts the service if it was running so new code is picked up.
 
 ## Decision Guide
 
-- For current identity or tenant: use `bun run cli -- tool seal_whoami`.
-- For configured enterprises: use `bun run cli -- corps list`.
-- For source-derived enterprise config: use `bun run cli -- source config`.
-- For daily approval run questions: use `bun run cli -- approval-runs summary --date YYYY-MM-DD --timezone Asia/Shanghai`.
-- For approval run lookup by document SN, ID, status, mode, or trace: use `bun run cli -- approval-runs search`.
-- For Langfuse lookup hints: use `bun run cli -- approval-runs bridge`.
-- For one simulation batch: use `bun run cli -- simulation batch-records <batchId>`.
-- For approval rule/document/style maintenance: use `bun run cli -- tool <toolName> --json '{...}'`.
+- For current identity or tenant: use `seal-home tool seal_whoami`.
+- For configured enterprises: use `seal-home corps list`.
+- For source-derived enterprise config: use `seal-home source config`.
+- For daily approval run questions: use `seal-home approval-runs summary --date YYYY-MM-DD --timezone Asia/Shanghai`.
+- For approval run lookup by document SN, ID, status, mode, or trace: use `seal-home approval-runs search`.
+- For Langfuse lookup hints: use `seal-home approval-runs bridge`.
+- For one simulation batch: use `seal-home simulation batch-records <batchId>`.
+- For approval rule/document/style maintenance: use `seal-home tool <toolName> --json '{...}'`.
 
 ## Task Playbooks
 
@@ -37,13 +51,13 @@ Use when the user gives a 合思/易快报单号, Seal source document SN, sourc
 1. Search runs:
 
 ```bash
-bun run cli -- approval-runs search --query <document-or-trace-key> --limit 50
+seal-home approval-runs search --query <document-or-trace-key> --limit 50
 ```
 
 2. If a likely record is found, get bridge hints:
 
 ```bash
-bun run cli -- approval-runs bridge --sourceDocumentSN <sourceDocumentSN>
+seal-home approval-runs bridge --sourceDocumentSN <sourceDocumentSN>
 ```
 
 3. Report `status`, `taskMode`, `finalExecutionMode`, `recordId`, `simulationBatchId`, `langfuseTraceId`, and `langfuseSessionFallback`. If `langfuseTraceId` is absent, tell the caller to use the session fallback.
@@ -53,7 +67,7 @@ bun run cli -- approval-runs bridge --sourceDocumentSN <sourceDocumentSN>
 Use explicit local date and timezone:
 
 ```bash
-bun run cli -- approval-runs summary --date YYYY-MM-DD --timezone Asia/Shanghai --limit 100
+seal-home approval-runs summary --date YYYY-MM-DD --timezone Asia/Shanghai --limit 100
 ```
 
 Report matched count, status counts, task mode counts, and the most relevant failed or simulated records. If `matched` is unexpectedly low, rerun with broader `limit` or targeted `query`.
@@ -61,7 +75,7 @@ Report matched count, status counts, task mode counts, and the most relevant fai
 ### Inspect a simulation batch
 
 ```bash
-bun run cli -- simulation batch-records <batchId>
+seal-home simulation batch-records <batchId>
 ```
 
 Summarize count, statuses, source document identifiers, and bridge hints. For failures, preserve record IDs so another tool can inspect the trace.
@@ -71,10 +85,10 @@ Summarize count, statuses, source document identifiers, and bridge hints. For fa
 Use for "which rule/document mentions X" or before changing rule/document content:
 
 ```bash
-bun run cli -- tool seal_approval_search --json '{"keywords":["关键词"],"matchMode":"any","maxResults":20}'
+seal-home tool seal_approval_search --json '{"keywords":["关键词"],"matchMode":"any","maxResults":20}'
 ```
 
-Use `areas` to narrow to `rules`, `documents`, or `preferences`. Use `refresh:true` when recent edits may not be reflected in the MCP server's in-memory cache. Separate CLI invocations are short-lived processes and do not share this cache.
+Use `areas` to narrow to `rules`, `documents`, or `preferences`. Separate CLI invocations are short-lived processes and do not share in-memory search caches. Use the local service as the restartable long-lived process for future cached workflows.
 
 ### Update approval rules
 
@@ -104,13 +118,13 @@ There is no dedicated delete command in the current CLI. If deactivation is inte
 Read first:
 
 ```bash
-bun run cli -- tool seal_approval_style_preferences_get
+seal-home tool seal_approval_style_preferences_get
 ```
 
 Then update only explicit fields:
 
 ```bash
-bun run cli -- tool seal_approval_style_preferences_update --json '{"tone":"...","language":"..."}'
+seal-home tool seal_approval_style_preferences_update --json '{"tone":"...","language":"..."}'
 ```
 
 Verify by reading again.
@@ -127,29 +141,6 @@ Verify by reading again.
 - `langfuseTraceId`: direct Langfuse trace lookup key when present.
 - `langfuseSessionFallback`: fallback session key, usually `hosecloud-{sourceDocumentSN}`, when direct trace ID is absent.
 
-## MCP Boundary
-
-The MCP server advertises only these tools:
-
-- `seal_corp_switch`
-- `seal_whoami`
-- `seal_approval_search`
-- `seal_approval_context_get`
-- `seal_runs_search`
-- `seal_action`
-
-Do not add every backend API operation as an MCP tool. Add stable, frequent read operations directly; route low-frequency management through `seal_action` or CLI.
-
-`seal_action` examples:
-
-```json
-{ "action": "help", "payload": { "topic": "rule" } }
-{ "action": "rule.create", "payload": { "description": "...", "scope": "...", "strictness": "SHOULD_FOLLOW" } }
-{ "action": "doc.update", "payload": { "documentId": "...", "content": "..." } }
-{ "action": "runs.summary", "payload": { "date": "2026-06-09", "timezone": "Asia/Shanghai" } }
-{ "action": "langfuse.bridge.get", "payload": { "sourceDocumentSN": "B26001887" } }
-```
-
 ## CLI Patterns
 
 Read `references/cli.md` when you need the full tool list, parameter examples, or maintenance commands.
@@ -157,10 +148,10 @@ Read `references/cli.md` when you need the full tool list, parameter examples, o
 Preferred command forms:
 
 ```bash
-bun run cli -- approval-runs summary --date 2026-06-09 --timezone Asia/Shanghai
-bun run cli -- approval-runs search --query B26001887 --limit 20 --includeBridge true
-bun run cli -- approval-runs bridge --sourceDocumentSN B26001887
-bun run cli -- tool seal_approval_search --json '{"keywords":["差旅","发票"],"areas":["rules","documents"]}'
+seal-home approval-runs summary --date 2026-06-09 --timezone Asia/Shanghai
+seal-home approval-runs search --query B26001887 --limit 20 --includeBridge true
+seal-home approval-runs bridge --sourceDocumentSN B26001887
+seal-home tool seal_approval_search --json '{"keywords":["差旅","发票"],"areas":["rules","documents"]}'
 ```
 
 ## Output Handling
