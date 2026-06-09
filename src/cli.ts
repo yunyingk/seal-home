@@ -16,6 +16,7 @@ const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const STATE_DIR = join(homedir(), ".config", "seal-home");
 const SERVICE_PID_FILE = join(STATE_DIR, "service.pid");
 const SERVICE_LOG_FILE = join(STATE_DIR, "service.log");
+const CURRENT_CORP_FILE = join(STATE_DIR, "current-corp");
 
 type ParsedArgs = {
   command: string[];
@@ -65,13 +66,37 @@ async function main() {
   if (area === "corps" && action === "list") {
     const corpId = stringOption(args.options.corp);
     const corps = loadCorpConfigs();
-    const currentCorpId = corpId ?? corps[0]?.id;
+    const currentCorpId = corpId ?? readCurrentCorpId() ?? corps[0]?.id;
     printJson(corps.map((item) => ({
       id: item.id,
       name: item.name,
       sourceType: item.source.type,
       current: item.id === currentCorpId
     })));
+    return;
+  }
+
+  if (area === "corps" && action === "current") {
+    const corp = selectCorp("");
+    printJson({
+      id: corp.id,
+      name: corp.name,
+      sourceType: corp.source.type
+    });
+    return;
+  }
+
+  if (area === "corps" && action === "switch") {
+    const corpId = maybeName;
+    if (!corpId) throw new Error("Usage: seal-home corps switch <corpId>");
+    const corp = selectCorp(corpId);
+    ensureStateDir();
+    writeFileSync(CURRENT_CORP_FILE, `${corp.id}\n`, { mode: 0o600 });
+    printJson({
+      current: true,
+      id: corp.id,
+      name: corp.name
+    });
     return;
   }
 
@@ -88,6 +113,40 @@ async function main() {
   }
 
   const client = await createSealClient(corp);
+
+  if (area === "context") {
+    await runTool("seal_approval_context_get", client, corp, {
+      documentLimit: numberOption(args.options.documentLimit),
+      ...ruleVersionContextOptions(stringOption(args.options.ruleVersion))
+    });
+    return;
+  }
+
+  if (area === "rules" && action === "versions") {
+    await runTool("seal_approval_rule_versions_list", client, corp, {});
+    return;
+  }
+
+  if (area === "rules" && action === "version") {
+    const version = maybeName ?? stringOption(args.options.version);
+    if (!version) throw new Error("Usage: seal-home rules version <versionId|versionNumber|latest>");
+    await runTool("seal_approval_rule_version_get", client, corp, parseRuleVersionSelector(version));
+    return;
+  }
+
+  if (area === "rules" && action === "search") {
+    const keyword = maybeName ?? stringOption(args.options.query);
+    if (!keyword) throw new Error("Usage: seal-home rules search <keyword> [--version <versionId|versionNumber|latest>]");
+    await runTool("seal_approval_search", client, corp, {
+      keywords: [keyword],
+      areas: ["rules"],
+      maxResults: numberOption(args.options.maxResults),
+      contextLines: numberOption(args.options.contextLines),
+      refresh: booleanOption(args.options.refresh),
+      ...ruleVersionSearchOptions(stringOption(args.options.version))
+    });
+    return;
+  }
 
   if (area === "tool") {
     if (!action) throw new Error("Usage: seal-home tool <toolName> [--json '{...}']");
@@ -138,6 +197,17 @@ async function main() {
       sourceDocumentId: stringOption(args.options.sourceDocumentId),
       simulationBatchId: stringOption(args.options.simulationBatchId),
       limit: numberOption(args.options.limit)
+    });
+    return;
+  }
+
+  if (area === "approval-runs" && action === "pick") {
+    const query = maybeName ?? stringOption(args.options.query);
+    if (!query) throw new Error("Usage: seal-home approval-runs pick <documentSN-or-query>");
+    await runTool("seal_approval_run_pick", client, corp, {
+      query,
+      limit: numberOption(args.options.limit),
+      includeBridge: booleanOption(args.options.includeBridge)
     });
     return;
   }
@@ -315,19 +385,26 @@ async function runTool(
 
 function selectCorp(corpId: string): CorpConfig {
   const corps = loadCorpConfigs();
-  const corp = corpId
-    ? corps.find((item) => item.id === corpId)
+  const selectedCorpId = corpId || readCurrentCorpId() || "";
+  const corp = selectedCorpId
+    ? corps.find((item) => item.id === selectedCorpId)
     : corps[0];
 
   if (!corp) {
     throw new Error(
-      corpId
-        ? `No enterprise config found for ${corpId}`
+      selectedCorpId
+        ? `No enterprise config found for ${selectedCorpId}`
         : `No enterprise config found. Add a non-example JSON file under one of: ${getEnterprisesDirCandidates().join(", ")}`
     );
   }
 
   return corp;
+}
+
+function readCurrentCorpId(): string | undefined {
+  if (!existsSync(CURRENT_CORP_FILE)) return undefined;
+  const value = readFileSync(CURRENT_CORP_FILE, "utf-8").trim();
+  return value || undefined;
 }
 
 function addHoseCorp(input: Record<string, unknown>) {
@@ -389,6 +466,48 @@ function optionalString(input: Record<string, unknown>, key: string): string | u
 
 function safeFileName(value: string): string {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function parseRuleVersionSelector(value: string) {
+  if (value === "latest") return { latest: true };
+  const versionNumber = Number(value);
+  if (Number.isInteger(versionNumber) && versionNumber > 0) {
+    return { versionNumber };
+  }
+  return { versionId: value };
+}
+
+function ruleVersionSearchOptions(value?: string) {
+  if (!value) return {};
+  const selector = parseRuleVersionSelector(value);
+  if ("latest" in selector) {
+    return {
+      ruleVersionScope: "version",
+      latestRuleVersion: true
+    };
+  }
+  if ("versionNumber" in selector) {
+    return {
+      ruleVersionScope: "version",
+      ruleVersionNumber: selector.versionNumber
+    };
+  }
+  return {
+    ruleVersionScope: "version",
+    ruleVersionId: selector.versionId
+  };
+}
+
+function ruleVersionContextOptions(value?: string) {
+  if (!value) return {};
+  const selector = parseRuleVersionSelector(value);
+  if ("latest" in selector) {
+    return { latestRuleVersion: true };
+  }
+  if ("versionNumber" in selector) {
+    return { ruleVersionNumber: selector.versionNumber };
+  }
+  return { ruleVersionId: selector.versionId };
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -491,11 +610,18 @@ Usage:
   seal-home update
   seal-home tools list
   seal-home corps list [--corp <corpId>]
+  seal-home corps current
+  seal-home corps switch <corpId>
   seal-home corps add-hose --json '{"id":"corp-id","name":"企业名称","appKey":"...","appSecurity":"...","corpId":"...","staffId":"..."}'
   seal-home source config [--corp <corpId>]
   seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
+  seal-home rules versions [--corp <corpId>]
+  seal-home rules version <versionId|versionNumber|latest> [--corp <corpId>]
+  seal-home rules search <keyword> [--version <versionId|versionNumber|latest>] [--maxResults 20]
+  seal-home context [--ruleVersion <versionId|versionNumber|latest>] [--documentLimit 50]
   seal-home approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
   seal-home approval-runs search [--query text] [--humanResult 驳回] [--manualApprovalStatus TERMINATED] [--startDate ms] [--endDate ms] [--limit 20] [--includeBridge true]
+  seal-home approval-runs pick <documentSN-or-query> [--limit 20]
   seal-home approval-runs get <recordId>
   seal-home approval-runs bridge [--sourceDocumentSN B26001887]
   seal-home simulation batch-records <batchId>

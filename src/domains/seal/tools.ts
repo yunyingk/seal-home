@@ -3,7 +3,7 @@ import { KyInstance } from "ky";
 import * as api from "./api.js";
 import { CorpConfig } from "../../core/config/types.js";
 import { searchApprovalContent } from "./search.js";
-import type { ApprovalRun } from "./types.js";
+import type { ApprovalRun, RuleSetVersion } from "./types.js";
 
 type ToolContext = {
   corp: CorpConfig;
@@ -78,9 +78,44 @@ export const sealTools = [
   },
   {
     name: "seal_approval_rule_versions_list",
-    description: "列出 Seal 已发布审批规则版本",
+    description: "列出 Seal 已发布审批规则版本摘要，不展开每个版本的规则快照",
     parameters: z.object({}),
-    handler: async (client: KyInstance) => api.listApprovalRuleVersions(client)
+    handler: async (client: KyInstance) => {
+      const versions = await api.listApprovalRuleVersions(client);
+      return {
+        count: versions.length,
+        latest: versions[0] ? summarizeRuleVersion(versions[0]) : undefined,
+        versions: versions.map(summarizeRuleVersion)
+      };
+    }
+  },
+  {
+    name: "seal_approval_rule_version_get",
+    description: "获取指定 Seal 已发布审批规则版本详情，包含该版本的规则快照",
+    parameters: z.object({
+      versionId: z.string().optional().describe("规则版本 ID"),
+      versionNumber: z.number().int().positive().optional().describe("规则版本号"),
+      latest: z.boolean().optional().describe("为 true 时获取最新版本")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { versionId?: string; versionNumber?: number; latest?: boolean }
+    ) => {
+      if (params.versionId) return api.getApprovalRuleVersion(client, params.versionId);
+
+      const versions = await api.listApprovalRuleVersions(client);
+      const version = params.versionNumber
+        ? versions.find((item) => item.versionNumber === params.versionNumber)
+        : versions[0];
+
+      if (!version) {
+        throw new Error(params.versionNumber
+          ? `Rule version not found: ${params.versionNumber}`
+          : "No rule versions found");
+      }
+
+      return version;
+    }
   },
   {
     name: "seal_approval_rule_version_publish",
@@ -183,7 +218,9 @@ export const sealTools = [
       maxResults: z.number().int().positive().optional().describe("最多返回命中数，默认 50"),
       refresh: z.boolean().optional().describe("是否跳过 5 分钟内存缓存并强制刷新"),
       ruleVersionScope: z.enum(["current", "all", "version"]).optional().describe("规则检索范围，默认 current；all 会检索所有已发布历史版本"),
-      ruleVersionId: z.string().optional().describe("ruleVersionScope=version 时指定版本 ID")
+      ruleVersionId: z.string().optional().describe("ruleVersionScope=version 时指定版本 ID"),
+      ruleVersionNumber: z.number().int().positive().optional().describe("ruleVersionScope=version 时指定版本号"),
+      latestRuleVersion: z.boolean().optional().describe("ruleVersionScope=version 时取最新已发布版本")
     }),
     handler: async (
       client: KyInstance,
@@ -198,6 +235,8 @@ export const sealTools = [
         refresh?: boolean;
         ruleVersionScope?: "current" | "all" | "version";
         ruleVersionId?: string;
+        ruleVersionNumber?: number;
+        latestRuleVersion?: boolean;
       },
       context: ToolContext
     ) => searchApprovalContent(client, context.corp, params)
@@ -206,17 +245,39 @@ export const sealTools = [
     name: "seal_approval_context_get",
     description: "聚合获取 Seal 现有审批规则、审批文档和审批风格偏好",
     parameters: z.object({
-      documentLimit: z.number().int().positive().optional().describe("最多返回的审批文档数量")
+      documentLimit: z.number().int().positive().optional().describe("最多返回的审批文档数量"),
+      ruleVersionId: z.string().optional().describe("指定已发布规则版本 ID；指定后 rules 返回该版本快照"),
+      ruleVersionNumber: z.number().int().positive().optional().describe("指定已发布规则版本号；指定后 rules 返回该版本快照"),
+      latestRuleVersion: z.boolean().optional().describe("为 true 时 rules 返回最新已发布版本快照")
     }),
     handler: async (
       client: KyInstance,
-      params: { documentLimit?: number },
+      params: {
+        documentLimit?: number;
+        ruleVersionId?: string;
+        ruleVersionNumber?: number;
+        latestRuleVersion?: boolean;
+      },
       context: ToolContext
-    ) =>
-      api.getApprovalContext(client, {
+    ) => {
+      const currentContext = await api.getApprovalContext(client, {
         documentLimit: params.documentLimit,
         stylePreferencesEndpoint: context.corp.seal.endpoints.approvalStylePreferences
-      })
+      });
+
+      if (!params.ruleVersionId && !params.ruleVersionNumber && !params.latestRuleVersion) {
+        return currentContext;
+      }
+
+      const version = await resolveRuleVersion(client, params);
+      return {
+        ...currentContext,
+        rules: {
+          version: summarizeRuleVersion(version),
+          rules: version.rules
+        }
+      };
+    }
   },
   {
     name: "seal_approval_style_preferences_get",
@@ -388,6 +449,60 @@ export const sealTools = [
     }
   },
   {
+    name: "seal_approval_run_pick",
+    description: "按合思单号或关键字查询运行记录，返回候选记录及其当时使用的规则版本，便于再取详情或查版本规则",
+    parameters: z.object({
+      query: z.string().describe("合思单号、源单据 ID、运行记录 ID 或 trace 关键字"),
+      limit: z.number().int().positive().max(100).optional(),
+      maxScan: z.number().int().positive().max(5000).optional().describe("最多扫描多少条运行记录用于本地匹配，默认 1000"),
+      includeBridge: z.boolean().optional()
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { query: string; limit?: number; maxScan?: number; includeBridge?: boolean }
+    ) => {
+      const picked = await pickApprovalRuns(client, {
+        query: params.query,
+        limit: params.limit ?? 20,
+        maxScan: params.maxScan ?? 1000
+      });
+      const records = await Promise.all(
+        picked.records.map((record) => api.getApprovalRun(client, record.id))
+      );
+
+      return {
+        query: params.query,
+        total: picked.total,
+        scanned: picked.scanned,
+        matched: records.length,
+        records: records.map((record) => {
+          const summary = summarizeApprovalRun(record);
+          return {
+            recordId: summary.id,
+            sourceDocumentSN: summary.sourceDocumentSN,
+            sourceDocumentId: summary.sourceDocumentId,
+            status: summary.status,
+            taskMode: summary.taskMode,
+            finalExecutionMode: summary.finalExecutionMode,
+            createdAt: summary.createdAt,
+            ruleSetVersionNumber: summary.ruleSetVersionNumber,
+            ruleSetPublishedAt: summary.ruleSetPublishedAt,
+            ruleSetPublishedByName: summary.ruleSetPublishedByName,
+            langfuseTraceId: summary.langfuseTraceId,
+            langfuseSessionFallback: summary.langfuseSessionFallback
+          };
+        }),
+        next: {
+          getDetail: "seal-home approval-runs get <recordId>",
+          getRuleVersion: "seal-home rules version <ruleSetVersionNumber>",
+          searchRuleVersion: "seal-home tool seal_approval_search --json '{\"keywords\":[\"关键词\"],\"areas\":[\"rules\"],\"ruleVersionScope\":\"version\",\"ruleVersionNumber\":14}'",
+          getVersionContext: "seal-home tool seal_approval_context_get --json '{\"ruleVersionNumber\":14}'"
+        },
+        ...(params.includeBridge ? { bridge: summarizeRunBridge(records) } : {})
+      };
+    }
+  },
+  {
     name: "seal_simulation_batch_records_get",
     description: "获取某一次 Seal 模拟批次的运行记录，并整理对应 Langfuse trace/session 桥接字段",
     parameters: z.object({
@@ -475,6 +590,7 @@ const sealActionNames = [
   "seal_approval_rule_update",
   "seal_approval_rule_delete",
   "seal_approval_rule_versions_list",
+  "seal_approval_rule_version_get",
   "seal_approval_rule_version_publish",
   "seal_approval_documents_list",
   "seal_approval_document_get",
@@ -484,6 +600,7 @@ const sealActionNames = [
   "seal_approval_style_preferences_update",
   "seal_approval_runs_summary",
   "seal_approval_run_get",
+  "seal_approval_run_pick",
   "seal_simulation_batch_records_get",
   "seal_approval_run_langfuse_bridge_get"
 ] as const;
@@ -495,6 +612,7 @@ const sealActionAliases: Record<string, (typeof sealActionNames)[number]> = {
   "rule.update": "seal_approval_rule_update",
   "rule.delete": "seal_approval_rule_delete",
   "rule.versions.list": "seal_approval_rule_versions_list",
+  "rule.version.get": "seal_approval_rule_version_get",
   "rule.publish": "seal_approval_rule_version_publish",
   "doc.list": "seal_approval_documents_list",
   "doc.get": "seal_approval_document_get",
@@ -504,6 +622,7 @@ const sealActionAliases: Record<string, (typeof sealActionNames)[number]> = {
   "style.update": "seal_approval_style_preferences_update",
   "runs.summary": "seal_approval_runs_summary",
   "runs.get": "seal_approval_run_get",
+  "runs.pick": "seal_approval_run_pick",
   "batch.records.get": "seal_simulation_batch_records_get",
   "langfuse.bridge.get": "seal_approval_run_langfuse_bridge_get"
 };
@@ -608,6 +727,9 @@ type ApprovalRunSummary = {
   simulationBatchId?: string;
   langfuseTraceId?: string;
   langfuseSessionFallback?: string;
+  ruleSetVersionNumber?: number;
+  ruleSetPublishedAt?: number;
+  ruleSetPublishedByName?: string;
   humanResult?: string;
   humanResultPath?: string;
   createdAt?: string | number;
@@ -639,6 +761,9 @@ function summarizeApprovalRun(record: ApprovalRun): ApprovalRunSummary {
     simulationBatchId: record.sourceExtendData?.simulation_batch_id,
     langfuseTraceId: record.sourceExtendData?._langfuseTraceId,
     langfuseSessionFallback: sourceDocumentSN ? `hosecloud-${sourceDocumentSN}` : undefined,
+    ruleSetVersionNumber: record.ruleSetVersionNumber,
+    ruleSetPublishedAt: record.ruleSetPublishedAt,
+    ruleSetPublishedByName: record.ruleSetPublishedByName,
     humanResult: humanResult?.value,
     humanResultPath: humanResult?.path,
     createdAt: record.createdAt,
@@ -667,6 +792,9 @@ function summarizeApprovalRuns(records: ApprovalRun[], options: ApprovalRunsSumm
         simulationBatchId: summary.simulationBatchId,
         langfuseTraceId: summary.langfuseTraceId,
         langfuseSessionFallback: summary.langfuseSessionFallback,
+        ruleSetVersionNumber: summary.ruleSetVersionNumber,
+        ruleSetPublishedAt: formatLocalDateTime(summary.ruleSetPublishedAt, options.timezone),
+        ruleSetPublishedByName: summary.ruleSetPublishedByName,
         humanResult: summary.humanResult,
         humanResultPath: summary.humanResultPath,
         recordId: summary.id
@@ -687,6 +815,9 @@ function summarizeRunBridge(records: ApprovalRun[]) {
       simulationBatchId: summary.simulationBatchId,
       langfuseTraceId: summary.langfuseTraceId,
       langfuseSessionFallback: summary.langfuseSessionFallback,
+      ruleSetVersionNumber: summary.ruleSetVersionNumber,
+      ruleSetPublishedAt: summary.ruleSetPublishedAt,
+      ruleSetPublishedByName: summary.ruleSetPublishedByName,
       resolution:
         summary.langfuseTraceId
           ? "trace"
@@ -697,19 +828,114 @@ function summarizeRunBridge(records: ApprovalRun[]) {
   });
 }
 
+function summarizeRuleVersion(version: RuleSetVersion) {
+  return {
+    id: version.id,
+    tenantId: version.tenantId,
+    versionNumber: version.versionNumber,
+    versionName: version.versionName,
+    publishedBy: version.publishedBy,
+    publishedByName: version.publishedByName,
+    rulesCount: version.rules.length,
+    publishedAt: version.publishedAt,
+    createdAt: version.createdAt
+  };
+}
+
+async function pickApprovalRuns(
+  client: KyInstance,
+  params: { query: string; limit: number; maxScan: number }
+) {
+  const pageSize = Math.min(100, Math.max(params.limit, 20));
+  const records: ApprovalRun[] = [];
+  let total: number | undefined;
+  let scanned = 0;
+
+  while (scanned < params.maxScan && records.length < params.limit) {
+    const data = await api.listApprovalRuns(client, {
+      offset: scanned,
+      limit: Math.min(pageSize, params.maxScan - scanned)
+    });
+
+    total = data.total;
+    scanned += data.records.length;
+    records.push(...filterRuns(data.records, params.query));
+
+    if (data.records.length === 0 || (total !== undefined && scanned >= total)) break;
+
+  }
+
+  return {
+    total,
+    scanned,
+    records: records.slice(0, params.limit)
+  };
+}
+
+async function resolveRuleVersion(
+  client: KyInstance,
+  params: { versionId?: string; versionNumber?: number; latestRuleVersion?: boolean; latest?: boolean }
+) {
+  if (params.versionId) return api.getApprovalRuleVersion(client, params.versionId);
+
+  const versions = await api.listApprovalRuleVersions(client);
+  const version = params.versionNumber
+    ? versions.find((item) => item.versionNumber === params.versionNumber)
+    : versions[0];
+
+  if (!version) {
+    throw new Error(params.versionNumber
+      ? `Rule version not found: ${params.versionNumber}`
+      : "No rule versions found");
+  }
+
+  return version;
+}
+
 function filterRuns(records: ApprovalRun[], query?: string): ApprovalRun[] {
   const normalized = query?.trim().toLowerCase();
   if (!normalized) return records;
 
-  return records.filter((record) =>
-    [
+  return records.filter((record) => {
+    const directValues = [
       record.id,
       record.sourceDocumentSN,
       record.sourceDocumentId,
       record.documentId,
       record.sourceExtendData?._langfuseTraceId,
-      record.sourceExtendData?.simulation_batch_id
-    ].some((value) => value?.toLowerCase().includes(normalized))
+      record.sourceExtendData?.simulation_batch_id,
+      record.status,
+      record.taskMode,
+      record.finalExecutionMode,
+      record.sourceSystem,
+      record.ruleSetVersionNumber,
+      record.ruleSetPublishedByName
+    ];
+
+    return directValues.some((value) => scalarIncludes(value, normalized)) ||
+      objectContainsScalar(record, normalized);
+  });
+}
+
+function scalarIncludes(value: unknown, normalized: string): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return String(value).toLowerCase().includes(normalized);
+  }
+  return false;
+}
+
+function objectContainsScalar(value: unknown, normalized: string, depth = 0): boolean {
+  if (depth > 6) return false;
+  if (scalarIncludes(value, normalized)) return true;
+  if (!value || typeof value !== "object") return false;
+
+  if (Array.isArray(value)) {
+    return value.some((item) => objectContainsScalar(item, normalized, depth + 1));
+  }
+
+  return Object.entries(value as Record<string, unknown>).some(([key, item]) =>
+    scalarIncludes(key, normalized) || objectContainsScalar(item, normalized, depth + 1)
   );
 }
 

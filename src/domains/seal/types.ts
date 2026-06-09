@@ -203,6 +203,9 @@ export const ApprovalRunSchema = z.object({
   result: z.unknown().optional(),
   pipelineData: z.unknown().optional(),
   sourceExtendData: ApprovalRunSourceExtendDataSchema.optional(),
+  ruleSetVersionNumber: z.number().optional(),
+  ruleSetPublishedAt: z.number().optional(),
+  ruleSetPublishedByName: z.string().optional(),
   createdAt: z.union([z.string(), z.number()]).optional(),
   updatedAt: z.union([z.string(), z.number()]).optional()
 }).passthrough();

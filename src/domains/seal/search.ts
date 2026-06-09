@@ -29,6 +29,8 @@ export type ApprovalSearchParams = {
   refresh?: boolean;
   ruleVersionScope?: RuleVersionScope;
   ruleVersionId?: string;
+  ruleVersionNumber?: number;
+  latestRuleVersion?: boolean;
 };
 
 export type ApprovalSearchResult = {
@@ -288,13 +290,15 @@ function preferenceEntries(preferences: ApprovalStylePreferences): SearchEntry[]
 async function loadSearchEntries(
   client: KyInstance,
   corp: CorpConfig,
-  params: Pick<ApprovalSearchParams, "documentLimit" | "refresh" | "ruleVersionScope" | "ruleVersionId">
+  params: Pick<ApprovalSearchParams, "documentLimit" | "refresh" | "ruleVersionScope" | "ruleVersionId" | "ruleVersionNumber" | "latestRuleVersion">
 ): Promise<SearchCacheEntry> {
   const ruleVersionScope = params.ruleVersionScope ?? "current";
   const cacheKey = [
     corp.id,
     `ruleVersionScope=${ruleVersionScope}`,
     `ruleVersionId=${params.ruleVersionId ?? ""}`,
+    `ruleVersionNumber=${params.ruleVersionNumber ?? ""}`,
+    `latestRuleVersion=${params.latestRuleVersion ?? false}`,
     `documentLimit=${params.documentLimit ?? 100}`
   ].join("|");
   const cached = searchCache.get(cacheKey);
@@ -303,7 +307,12 @@ async function loadSearchEntries(
   }
 
   const [rules, documents, preferences] = await Promise.all([
-    loadRuleEntries(client, ruleVersionScope, params.ruleVersionId),
+    loadRuleEntries(client, {
+      scope: ruleVersionScope,
+      versionId: params.ruleVersionId,
+      versionNumber: params.ruleVersionNumber,
+      latest: params.latestRuleVersion
+    }),
     listApprovalDocuments(client, { limit: params.documentLimit ?? 100 }),
     getApprovalStylePreferences(
       client,
@@ -328,24 +337,45 @@ async function loadSearchEntries(
 
 async function loadRuleEntries(
   client: KyInstance,
-  scope: RuleVersionScope,
-  versionId?: string
+  params: {
+    scope: RuleVersionScope;
+    versionId?: string;
+    versionNumber?: number;
+    latest?: boolean;
+  }
 ): Promise<SearchEntry[]> {
-  if (scope === "current") {
+  if (params.scope === "current") {
     const rules = await listApprovalRules(client);
     return rules.rules.flatMap(ruleEntries);
   }
 
-  if (scope === "version") {
-    if (!versionId) {
-      throw new Error("ruleVersionId is required when ruleVersionScope is version");
-    }
-    const version = await getApprovalRuleVersion(client, versionId);
+  if (params.scope === "version") {
+    const version = await resolveRuleVersion(client, params);
     return ruleVersionEntries(version);
   }
 
   const versions = await listApprovalRuleVersions(client);
   return versions.flatMap(ruleVersionEntries);
+}
+
+async function resolveRuleVersion(
+  client: KyInstance,
+  params: { versionId?: string; versionNumber?: number; latest?: boolean }
+) {
+  if (params.versionId) return getApprovalRuleVersion(client, params.versionId);
+
+  const versions = await listApprovalRuleVersions(client);
+  const version = params.versionNumber
+    ? versions.find((item) => item.versionNumber === params.versionNumber)
+    : versions[0];
+
+  if (!version) {
+    throw new Error(params.versionNumber
+      ? `Rule version not found: ${params.versionNumber}`
+      : "No rule versions found");
+  }
+
+  return version;
 }
 
 export async function searchApprovalContent(
@@ -369,7 +399,9 @@ export async function searchApprovalContent(
     documentLimit: params.documentLimit,
     refresh: params.refresh,
     ruleVersionScope,
-    ruleVersionId: params.ruleVersionId
+    ruleVersionId: params.ruleVersionId,
+    ruleVersionNumber: params.ruleVersionNumber,
+    latestRuleVersion: params.latestRuleVersion
   });
 
   const results = cached.entries
@@ -387,7 +419,9 @@ export async function searchApprovalContent(
       contextLines,
       refresh: params.refresh ?? false,
       ruleVersionScope,
-      ruleVersionId: params.ruleVersionId
+      ruleVersionId: params.ruleVersionId,
+      ruleVersionNumber: params.ruleVersionNumber,
+      latestRuleVersion: params.latestRuleVersion ?? false
     },
     cache: {
       fetchedAt: new Date(cached.fetchedAt).toISOString(),
