@@ -226,6 +226,15 @@ async function main() {
     return;
   }
 
+  if (area === "approval-runs" && action === "url") {
+    await runTool("seal_approval_run_url_get", client, corp, {
+      recordId: maybeName,
+      sourceDocumentSN: stringOption(args.options.sourceDocumentSN),
+      sourceDocumentId: stringOption(args.options.sourceDocumentId)
+    });
+    return;
+  }
+
   if (area === "simulation" && action === "batch-records") {
     const batchId = maybeName ?? stringOption(args.options.batchId);
     if (!batchId) throw new Error("Usage: seal-home simulation batch-records <batchId>");
@@ -566,7 +575,7 @@ async function diagnoseAuth(corp: CorpConfig) {
         token,
         public: {
           uid,
-          hasProvisionalUrl: true
+          enterpriseUrl: redactSensitiveText(url)
         }
       };
     })
@@ -957,6 +966,9 @@ Usage:
   seal-home approval-runs search [--query text] [--humanResult 驳回] [--manualApprovalStatus TERMINATED] [--startDate ms] [--endDate ms] [--limit 20] [--includeBridge true]
   seal-home approval-runs pick <documentSN-or-query> [--limit 20]
   seal-home approval-runs get <recordId>
+  seal-home approval-runs url
+  seal-home approval-runs url <recordId>
+  seal-home approval-runs url --sourceDocumentSN B26022501
   seal-home approval-runs bridge [--sourceDocumentSN B26001887]
   seal-home simulation batch-records <batchId>
 `);

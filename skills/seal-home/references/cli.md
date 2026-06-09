@@ -29,6 +29,9 @@ seal-home source config [--corp <corpId>]
 seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
 seal-home approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
 seal-home approval-runs search [--query text] [--limit 20] [--includeBridge true]
+seal-home approval-runs url
+seal-home approval-runs url <recordId>
+seal-home approval-runs url --sourceDocumentSN B26001887
 seal-home approval-runs bridge [--sourceDocumentSN B26001887]
 seal-home simulation batch-records <batchId>
 ```

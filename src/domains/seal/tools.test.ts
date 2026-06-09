@@ -1,13 +1,32 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { KyInstance } from "ky";
 import { z } from "zod";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CorpConfig } from "../../core/config/types.js";
 import { findSealMcpTool, findSealTool, sealMcpTools, sealTools } from "./tools.js";
 
 type ToolHandler = (
   client: KyInstance,
   params: Record<string, unknown>,
-  context: ReturnType<typeof fakeContext>
+  context: { corp: CorpConfig }
 ) => Promise<unknown>;
+
+const ORIGINAL_TOKEN_STORE = process.env.SEAL_HOME_TOKEN_STORE;
+const tempDirs: string[] = [];
+
+afterEach(() => {
+  if (ORIGINAL_TOKEN_STORE === undefined) {
+    delete process.env.SEAL_HOME_TOKEN_STORE;
+  } else {
+    process.env.SEAL_HOME_TOKEN_STORE = ORIGINAL_TOKEN_STORE;
+  }
+
+  for (const dir of tempDirs.splice(0)) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
 describe("sealTools", () => {
   test("exposes concrete JSON schemas for parameterized tools", () => {
@@ -171,6 +190,78 @@ describe("sealTools", () => {
     });
   });
 
+  test("approval run url returns Hose enterprise and document links by recordId", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_url_get");
+    expect(tool).toBeDefined();
+    primeHoseEnterpriseUrl("corp-a", "https://app.ekuaibao.com/web/home.html?accessToken=close-token");
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { recordId: "run-1" },
+      fakeHoseContext()
+    ) as {
+      enterpriseAssistUrl?: string;
+      enterpriseUrl?: string;
+      hoseDomain?: string;
+      documentUrl?: string;
+      recordId?: string;
+      sourceDocumentSN?: string;
+    };
+
+    expect(result).toMatchObject({
+      enterpriseAssistUrl: "https://app.ekuaibao.com/web/home.html?accessToken=close-token",
+      enterpriseUrl: "https://app.ekuaibao.com/web/home.html?accessToken=close-token",
+      hoseDomain: "https://app.ekuaibao.com",
+      documentUrl: "https://app.ekuaibao.com/web/thirdparty.html",
+      recordId: "run-1",
+      sourceDocumentSN: "B26001965"
+    });
+  });
+
+  test("approval run url returns enterprise assist link without a document lookup", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_url_get");
+    expect(tool).toBeDefined();
+    primeHoseEnterpriseUrl("corp-a", "https://app.ekuaibao.com/web/home.html?accessToken=close-token");
+
+    const requests: string[] = [];
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(requests),
+      {},
+      fakeHoseContext()
+    ) as {
+      enterpriseAssistUrl?: string;
+      enterpriseUrl?: string;
+      documentUrl?: string;
+    };
+
+    expect(requests).toEqual([]);
+    expect(result).toMatchObject({
+      enterpriseAssistUrl: "https://app.ekuaibao.com/web/home.html?accessToken=close-token",
+      enterpriseUrl: "https://app.ekuaibao.com/web/home.html?accessToken=close-token"
+    });
+    expect(result.documentUrl).toBeUndefined();
+  });
+
+  test("approval run url can resolve by sourceDocumentSN", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_url_get");
+    expect(tool).toBeDefined();
+    primeHoseEnterpriseUrl("corp-a", "https://app.ekuaibao.com/web/home.html?accessToken=close-token");
+
+    const requests: string[] = [];
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(requests),
+      { sourceDocumentSN: "B26001965" },
+      fakeHoseContext()
+    ) as { documentUrl?: string };
+
+    expect(requests[0]).toContain("sourceDocumentSN=B26001965");
+    expect(requests[1]).toBe("api/v1/approvals/run-1");
+    expect(result.documentUrl).toBe("https://app.ekuaibao.com/web/thirdparty.html");
+  });
+
   test("approval run summary filters by local date and returns compact aggregates", async () => {
     const tool = sealTools.find((item) => item.name === "seal_approval_runs_summary");
     expect(tool).toBeDefined();
@@ -272,7 +363,7 @@ function fakeApprovalRunsClient(requests: string[] = []): KyInstance {
   } as unknown as KyInstance;
 }
 
-function fakeContext() {
+function fakeContext(): { corp: CorpConfig } {
   return {
     corp: {
       id: "corp-a",
@@ -285,11 +376,56 @@ function fakeContext() {
       source: {
         type: "direct",
         token: "token",
-        sealUrl: "https://seal.test"
+        sealUrl: "https://seal.test",
+        expiresIn: 3600,
+        staffId: "direct"
       },
       auth: {
         refreshTtl: 300
       }
     }
   };
+}
+
+function fakeHoseContext(): { corp: CorpConfig } {
+  return {
+    corp: {
+      id: "corp-a",
+      name: "Corp A",
+      seal: {
+        endpoints: {
+          approvalStylePreferences: "api/v1/agent/ai-approval/config"
+        }
+      },
+      source: {
+        type: "hose",
+        domain: "https://app.ekuaibao.com/",
+        appKey: "app-key",
+        appSecurity: "app-secret",
+        staffId: "staff-a",
+        corpId: "hose-corp-a"
+      },
+      auth: {
+        refreshTtl: 300
+      }
+    }
+  };
+}
+
+function primeHoseEnterpriseUrl(corpId: string, url: string) {
+  const dir = mkdtempSync(join(tmpdir(), "seal-home-tools-"));
+  tempDirs.push(dir);
+  const storePath = join(dir, "tokens.json");
+  process.env.SEAL_HOME_TOKEN_STORE = storePath;
+  writeFileSync(storePath, JSON.stringify({
+    [corpId]: {
+      hose: {
+        closeapi: {
+          token: "close-token",
+          url,
+          expiresAt: Date.now() + 3600 * 1000
+        }
+      }
+    }
+  }));
 }

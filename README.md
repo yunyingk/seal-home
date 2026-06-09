@@ -169,6 +169,7 @@ These tools remain available to the CLI:
 - `seal_approval_documents_list`, `seal_approval_document_get`, `seal_approval_document_create`, `seal_approval_document_update`: maintain approval documents.
 - `seal_approval_style_preferences_get`, `seal_approval_style_preferences_update`: read and update approval style preferences.
 - `seal_approval_runs_summary`: summarize approval runs by local date and timezone. Use this for daily questions such as "what approval records did Tawen have today"; it returns status/task-mode counts and compact records.
+- `seal_approval_run_url_get`: return the Hose enterprise assist URL, optionally with the original document URL for an approval run by `recordId`, `sourceDocumentSN`, or `sourceDocumentId`.
 - `seal_simulation_batch_records_get`: read records from one simulation batch via `api/v1/simulation/batch/{batchId}/records`.
 - `seal_approval_run_langfuse_bridge_get`: resolve approval run records to Langfuse lookup hints. It prefers `sourceExtendData._langfuseTraceId`; if that is missing, it returns `hosecloud-{sourceDocumentSN}` as the session fallback.
 

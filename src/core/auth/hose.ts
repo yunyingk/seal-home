@@ -158,18 +158,19 @@ async function fetchHoseCloseApiToken(
 
   return {
     token: closeapiToken,
+    url,
     expiresAt: Date.now() + 7200 * 1000
   };
 }
 
-async function ensureHoseCloseApiToken(corp: CorpConfig): Promise<string> {
+async function ensureHoseCloseApiToken(corp: CorpConfig): Promise<TokenEntry> {
   if (corp.source.type !== "hose") {
     throw new Error(`Unsupported Seal source: ${corp.source.type}`);
   }
 
   const cache = getHoseAuthCache(corp.id);
-  if (isFresh(cache.closeapi)) {
-    return cache.closeapi.token;
+  if (isFresh(cache.closeapi) && cache.closeapi.url) {
+    return cache.closeapi;
   }
 
   const openapiToken = await ensureHoseOpenapiToken(corp);
@@ -178,7 +179,19 @@ async function ensureHoseCloseApiToken(corp: CorpConfig): Promise<string> {
     ...getHoseAuthCache(corp.id),
     closeapi
   });
-  return closeapi.token;
+  return closeapi;
+}
+
+export async function getHoseEnterpriseUrl(corp: CorpConfig): Promise<string> {
+  if (corp.source.type !== "hose") {
+    throw new Error(`Unsupported Seal source: ${corp.source.type}`);
+  }
+
+  const url = (await ensureHoseCloseApiToken(corp)).url;
+  if (!url) {
+    throw new Error("Hose provisional auth URL was not available");
+  }
+  return url;
 }
 
 export async function getHoseSealSession(corp: CorpConfig): Promise<SealSession> {
@@ -186,13 +199,13 @@ export async function getHoseSealSession(corp: CorpConfig): Promise<SealSession>
     throw new Error(`Unsupported Seal source: ${corp.source.type}`);
   }
 
-  const hoseAccessToken = await ensureHoseCloseApiToken(corp);
+  const hoseAccess = await ensureHoseCloseApiToken(corp);
   const sealUrl = defaultSealUrl(corp, corp.source);
 
   const sealResponse = await ky
     .get(`${normalizeBaseUrl(sealUrl)}/api/auth/oauth2/session/oem-hosecloud`, {
       searchParams: {
-        token: hoseAccessToken,
+        token: hoseAccess.token,
         returnToken: "1"
       },
       timeout: 30000

@@ -2,7 +2,8 @@ import { z } from "zod";
 
 export const TokenEntrySchema = z.object({
   token: z.string(),
-  expiresAt: z.number()
+  expiresAt: z.number(),
+  url: z.string().url().optional()
 });
 
 export const SealEnterpriseConfigSchema = z.object({
