@@ -1,6 +1,8 @@
 ---
 name: seal-home
-description: Use when working with the Seal Home / seal-home CLI and local service for approval automation: querying Seal enterprise identity, approval rules, approval knowledge documents, approval style preferences, approval run history, simulation batch records, and Langfuse trace/session bridge hints. Prefer this skill when the user mentions Seal, seal-home, 合思/易快报 approval runs, approval rule/document maintenance, approval simulations, updating/restarting the seal-home service, or debugging Seal approval execution traces.
+description: Use when working with Seal Home approval automation, seal-home CLI or MCP tools, approval rules and documents, approval run history, simulations, enterprise auth diagnostics, and Langfuse trace hints.
+metadata:
+  short-description: Seal approval automation tools
 ---
 
 # Seal Home
