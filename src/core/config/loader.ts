@@ -5,6 +5,7 @@ import { CorpConfig, CorpConfigSchema } from "./types.js";
 
 const ENTERPRISES_DIR = "enterprises";
 const CONFIG_ENV = "SEAL_HOME_ENTERPRISES_DIR";
+export const USER_ENTERPRISES_DIR = join(homedir(), ".config", "seal-home", "enterprises");
 
 export function loadCorpConfigs(): CorpConfig[] {
   const dir = resolveEnterprisesDir();
@@ -27,14 +28,13 @@ export function resolveEnterprisesDir(): string | undefined {
 
   if (existsSync(ENTERPRISES_DIR)) return ENTERPRISES_DIR;
 
-  const userConfigDir = join(homedir(), ".config", "seal-home", "enterprises");
-  return existsSync(userConfigDir) ? userConfigDir : undefined;
+  return existsSync(USER_ENTERPRISES_DIR) ? USER_ENTERPRISES_DIR : undefined;
 }
 
 export function getEnterprisesDirCandidates(): string[] {
   return [
     `${CONFIG_ENV}=<path>`,
     ENTERPRISES_DIR,
-    join(homedir(), ".config", "seal-home", "enterprises")
+    USER_ENTERPRISES_DIR
   ];
 }

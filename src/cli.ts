@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { getEnterprisesDirCandidates, loadCorpConfigs } from "./core/config/loader.js";
+import { getEnterprisesDirCandidates, loadCorpConfigs, USER_ENTERPRISES_DIR } from "./core/config/loader.js";
 import { createSealClient } from "./core/http/factory.js";
 import { resolveLiveSealEnterpriseConfig } from "./domains/seal/source.js";
 import { sealTools, type SealTool } from "./domains/seal/tools.js";
@@ -72,6 +72,11 @@ async function main() {
       sourceType: item.source.type,
       current: item.id === currentCorpId
     })));
+    return;
+  }
+
+  if (area === "corps" && action === "add-hose") {
+    addHoseCorp(jsonObject(args.json));
     return;
   }
 
@@ -325,6 +330,67 @@ function selectCorp(corpId: string): CorpConfig {
   return corp;
 }
 
+function addHoseCorp(input: Record<string, unknown>) {
+  const id = requiredString(input, "id");
+  const name = requiredString(input, "name");
+  const appKey = requiredString(input, "appKey");
+  const appSecurity = requiredString(input, "appSecurity");
+  const corpId = requiredString(input, "corpId");
+  const staffId = requiredString(input, "staffId");
+  const domain = optionalString(input, "domain") ?? "https://app.ekuaibao.com";
+  const sealUrl = optionalString(input, "sealUrl") ?? `https://${id.toLowerCase()}.sealai.cc`;
+
+  const config: CorpConfig = {
+    id,
+    name,
+    seal: {
+      url: sealUrl,
+      endpoints: {
+        approvalStylePreferences: "api/v1/agent/ai-approval/config"
+      }
+    },
+    source: {
+      type: "hose",
+      domain,
+      appKey,
+      appSecurity,
+      corpId,
+      staffId
+    },
+    auth: {
+      refreshTtl: 300
+    }
+  };
+
+  mkdirSync(USER_ENTERPRISES_DIR, { recursive: true, mode: 0o700 });
+  const file = join(USER_ENTERPRISES_DIR, `${safeFileName(id)}.json`);
+  if (existsSync(file) && input.overwrite !== true) {
+    throw new Error(`Enterprise config already exists: ${file}. Pass "overwrite": true to replace it.`);
+  }
+
+  writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600 });
+  printJson({
+    id,
+    name,
+    path: file
+  });
+}
+
+function requiredString(input: Record<string, unknown>, key: string): string {
+  const value = optionalString(input, key);
+  if (!value) throw new Error(`Missing required JSON field: ${key}`);
+  return value;
+}
+
+function optionalString(input: Record<string, unknown>, key: string): string | undefined {
+  const value = input[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function safeFileName(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
 function parseArgs(argv: string[]): ParsedArgs {
   const command: string[] = [];
   const options: Record<string, string | boolean> = {};
@@ -425,6 +491,7 @@ Usage:
   seal-home update
   seal-home tools list
   seal-home corps list [--corp <corpId>]
+  seal-home corps add-hose --json '{"id":"corp-id","name":"企业名称","appKey":"...","appSecurity":"...","corpId":"...","staffId":"..."}'
   seal-home source config [--corp <corpId>]
   seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
   seal-home approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
