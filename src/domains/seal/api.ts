@@ -230,6 +230,7 @@ export async function listApprovalRuns(
     status?: string;
     taskMode?: string;
     manualApprovalStatus?: string | string[];
+    search?: string;
     sourceDocumentSN?: string;
     sourceDocumentId?: string;
   } = {}
@@ -244,6 +245,7 @@ export async function listApprovalRuns(
   setOptional(searchParams, "endDate", params.endDate);
   setOptional(searchParams, "status", params.status);
   setOptional(searchParams, "taskMode", params.taskMode);
+  setOptional(searchParams, "search", params.search);
   setOptional(searchParams, "sourceDocumentSN", params.sourceDocumentSN);
   setOptional(searchParams, "sourceDocumentId", params.sourceDocumentId);
   setArrayOptional(searchParams, "manualApprovalStatus", params.manualApprovalStatus);

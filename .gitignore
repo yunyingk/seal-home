@@ -1,6 +1,7 @@
 node_modules/
 .DS_Store
 *.log
+.cache/
 
 # Local enterprise configs can contain credentials.
 enterprises/*.json

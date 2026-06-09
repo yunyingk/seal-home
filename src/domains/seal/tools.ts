@@ -351,9 +351,12 @@ export const sealTools = [
         includeBridge?: boolean;
       }
     ) => {
-      const data = await api.listApprovalRuns(client, withApprovalRunFilters(params));
+      const query = params.query?.trim();
+      const data = await api.listApprovalRuns(client, withApprovalRunFilters({
+        ...params,
+        search: query
+      }));
       const records = await prepareApprovalRuns(client, data.records, {
-        query: params.query,
         humanResult: params.humanResult
       });
 
@@ -586,6 +589,7 @@ export const sealTools = [
         ? await api.listSimulationBatchRecords(client, params.simulationBatchId)
         : (await api.listApprovalRuns(client, {
             limit: params.limit ?? 50,
+            search: params.sourceDocumentSN ?? params.sourceDocumentId,
             sourceDocumentSN: params.sourceDocumentSN,
             sourceDocumentId: params.sourceDocumentId
           })).records;
@@ -890,6 +894,7 @@ async function resolveApprovalRunForUrl(
 
   const data = await api.listApprovalRuns(client, {
     limit: 1,
+    search: params.sourceDocumentSN ?? params.sourceDocumentId,
     sourceDocumentSN: params.sourceDocumentSN,
     sourceDocumentId: params.sourceDocumentId
   });

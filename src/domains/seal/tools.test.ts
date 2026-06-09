@@ -158,6 +158,28 @@ describe("sealTools", () => {
     expect(requests[0]).toContain("manualApprovalStatus%5B0%5D=TERMINATED");
   });
 
+  test("approval run search forwards query as API search parameter", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_runs_search");
+    expect(tool).toBeDefined();
+
+    const requests: string[] = [];
+    const handler = tool!.handler as ToolHandler;
+    await handler(
+      fakeApprovalRunsClient(requests),
+      {
+        query: "B26001965",
+        startDate: "1774972800000",
+        endDate: "1781020799999",
+        limit: 50
+      },
+      fakeContext()
+    );
+
+    expect(requests[0]).toContain("search=B26001965");
+    expect(requests[0]).toContain("startDate=1774972800000");
+    expect(requests[0]).toContain("endDate=1781020799999");
+  });
+
   test("approval run get returns stable aliases for document concepts", async () => {
     const tool = sealTools.find((item) => item.name === "seal_approval_run_get");
     expect(tool).toBeDefined();
@@ -257,7 +279,7 @@ describe("sealTools", () => {
       fakeHoseContext()
     ) as { documentUrl?: string };
 
-    expect(requests[0]).toContain("sourceDocumentSN=B26001965");
+    expect(requests[0]).toContain("search=B26001965");
     expect(requests[1]).toBe("api/v1/approvals/run-1");
     expect(result.documentUrl).toBe("https://app.ekuaibao.com/web/thirdparty.html");
   });
