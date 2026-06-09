@@ -1,0 +1,4 @@
+interface:
+  display_name: "Seal Home"
+  short_description: "Use Seal approval context and run diagnostics"
+  default_prompt: "Use $seal-home to inspect Seal approval rules, documents, run history, and Langfuse trace hints."

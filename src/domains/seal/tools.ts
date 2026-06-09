@@ -9,6 +9,13 @@ type ToolContext = {
   corp: CorpConfig;
 };
 
+type SealToolDefinition = {
+  name: string;
+  description: string;
+  parameters: z.ZodType;
+  handler: (client: KyInstance, params: never, context: ToolContext) => Promise<unknown>;
+};
+
 export const sealTools = [
   {
     name: "seal_whoami",
@@ -404,6 +411,140 @@ export const sealTools = [
 ];
 
 export type SealTool = (typeof sealTools)[number];
+
+const sealToolByName = new Map<string, SealTool>(
+  sealTools.map((tool) => [tool.name, tool])
+);
+
+const mcpDirectToolNames = [
+  "seal_whoami",
+  "seal_approval_search",
+  "seal_approval_context_get"
+] as const;
+
+const sealActionNames = [
+  "seal_session_get",
+  "seal_approval_rules_list",
+  "seal_approval_rule_create",
+  "seal_approval_rule_update",
+  "seal_approval_rule_delete",
+  "seal_approval_rule_versions_list",
+  "seal_approval_rule_version_publish",
+  "seal_approval_documents_list",
+  "seal_approval_document_get",
+  "seal_approval_document_create",
+  "seal_approval_document_update",
+  "seal_approval_style_preferences_get",
+  "seal_approval_style_preferences_update",
+  "seal_approval_runs_summary",
+  "seal_simulation_batch_records_get",
+  "seal_approval_run_langfuse_bridge_get"
+] as const;
+
+const sealActionAliases: Record<string, (typeof sealActionNames)[number]> = {
+  "session.get": "seal_session_get",
+  "rule.list": "seal_approval_rules_list",
+  "rule.create": "seal_approval_rule_create",
+  "rule.update": "seal_approval_rule_update",
+  "rule.delete": "seal_approval_rule_delete",
+  "rule.versions.list": "seal_approval_rule_versions_list",
+  "rule.publish": "seal_approval_rule_version_publish",
+  "doc.list": "seal_approval_documents_list",
+  "doc.get": "seal_approval_document_get",
+  "doc.create": "seal_approval_document_create",
+  "doc.update": "seal_approval_document_update",
+  "style.get": "seal_approval_style_preferences_get",
+  "style.update": "seal_approval_style_preferences_update",
+  "runs.summary": "seal_approval_runs_summary",
+  "batch.records.get": "seal_simulation_batch_records_get",
+  "langfuse.bridge.get": "seal_approval_run_langfuse_bridge_get"
+};
+
+export const sealMcpTools: SealToolDefinition[] = [
+  ...mcpDirectToolNames.map((name) => requiredTool(name)),
+  {
+    ...requiredTool("seal_approval_runs_search"),
+    name: "seal_runs_search",
+    description: "查询 Seal 审批/审核运行记录，返回精简记录并按需提供 Langfuse trace/session 关联"
+  },
+  {
+    name: "seal_action",
+    description: "Seal 低频管理操作统一入口。传 action=help 查看可用动作；支持 rule/doc/style/runs/batch/langfuse 等管理与诊断操作。",
+    parameters: z.object({
+      action: z.string().describe("动作名，如 help、rule.create、doc.update、runs.summary、langfuse.bridge.get；也兼容旧 tool 名"),
+      payload: z.record(z.string(), z.unknown()).optional().describe("动作参数对象")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { action: string; payload?: Record<string, unknown> },
+      context: ToolContext
+    ) => runSealAction(client, params, context)
+  }
+];
+
+export function findSealTool(name: string, options: { includeMcpAliases?: boolean } = {}) {
+  if (options.includeMcpAliases && name === "seal_runs_search") {
+    return requiredTool("seal_approval_runs_search");
+  }
+  return sealToolByName.get(name);
+}
+
+export function findSealMcpTool(name: string) {
+  return sealMcpTools.find((tool) => tool.name === name);
+}
+
+async function runSealAction(
+  client: KyInstance,
+  params: { action: string; payload?: Record<string, unknown> },
+  context: ToolContext
+) {
+  const action = params.action?.trim();
+  if (!action || action === "help") {
+    return sealActionHelp(params.payload?.topic);
+  }
+
+  const toolName = sealActionAliases[action] ?? action;
+  if (!isSealActionToolName(toolName)) {
+    return {
+      error: `Unsupported seal_action action: ${action}`,
+      help: sealActionHelp(params.payload?.topic)
+    };
+  }
+
+  const tool = requiredTool(toolName);
+  const payload = params.payload ?? {};
+  return tool.handler(client, payload as never, context);
+}
+
+function sealActionHelp(topic: unknown) {
+  const normalizedTopic = typeof topic === "string" ? topic.trim() : undefined;
+  const actions = Object.entries(sealActionAliases)
+    .filter(([action]) => !normalizedTopic || action.startsWith(`${normalizedTopic}.`))
+    .map(([action, toolName]) => {
+      const tool = requiredTool(toolName);
+      return {
+        action,
+        toolName,
+        description: tool.description
+      };
+    });
+
+  return {
+    usage: "seal_action({ action, payload })",
+    topics: ["session", "rule", "doc", "style", "runs", "batch", "langfuse"],
+    actions
+  };
+}
+
+function requiredTool(name: string): SealTool {
+  const tool = sealToolByName.get(name);
+  if (!tool) throw new Error(`Missing Seal tool: ${name}`);
+  return tool;
+}
+
+function isSealActionToolName(name: string): name is (typeof sealActionNames)[number] {
+  return sealActionNames.includes(name as (typeof sealActionNames)[number]);
+}
 
 type ApprovalRunSummary = {
   id: string;

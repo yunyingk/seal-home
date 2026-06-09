@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { KyInstance } from "ky";
 import { z } from "zod";
-import { sealTools } from "./tools.js";
+import { findSealMcpTool, findSealTool, sealMcpTools, sealTools } from "./tools.js";
 
 type ToolHandler = (
   client: KyInstance,
@@ -47,6 +47,38 @@ describe("sealTools", () => {
     expect(sealTools.find((item) => item.name === "seal_approval_runs_summary")).toBeDefined();
     expect(sealTools.find((item) => item.name === "seal_simulation_batch_records_get")).toBeDefined();
     expect(sealTools.find((item) => item.name === "seal_approval_run_langfuse_bridge_get")).toBeDefined();
+  });
+
+  test("keeps the MCP exposed tool surface narrow", () => {
+    expect(sealMcpTools.map((tool) => tool.name)).toEqual([
+      "seal_whoami",
+      "seal_approval_search",
+      "seal_approval_context_get",
+      "seal_runs_search",
+      "seal_action"
+    ]);
+  });
+
+  test("routes low-frequency management tools through seal_action", async () => {
+    const tool = sealMcpTools.find((item) => item.name === "seal_action");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { action: "runs.summary", payload: { date: "2026-06-08", timezone: "Asia/Shanghai" } },
+      fakeContext()
+    ) as { matched: number };
+
+    expect(result.matched).toBe(2);
+  });
+
+  test("keeps old fine-grained tools available to compatibility callers but hidden from MCP list", () => {
+    expect(sealMcpTools.find((item) => item.name === "seal_approval_rule_create")).toBeUndefined();
+    expect(findSealMcpTool("seal_approval_rule_create")).toBeUndefined();
+    expect(findSealTool("seal_approval_rule_create")).toBeDefined();
+    expect(findSealMcpTool("seal_action")).toBeDefined();
+    expect(findSealMcpTool("seal_runs_search")?.name).toBe("seal_runs_search");
   });
 
   test("approval run search omits bridge unless requested", async () => {

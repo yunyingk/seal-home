@@ -9,7 +9,7 @@ import { loadCorpConfigs } from "./core/config/loader.js";
 import { CorpContext } from "./core/config/manager.js";
 import { createSealClient } from "./core/http/factory.js";
 import { resolveLiveSealEnterpriseConfig } from "./domains/seal/source.js";
-import { sealTools } from "./domains/seal/tools.js";
+import { findSealMcpTool, findSealTool, sealMcpTools } from "./domains/seal/tools.js";
 
 async function main() {
   const corps = loadCorpConfigs();
@@ -18,7 +18,7 @@ async function main() {
   const server = new Server(
     {
       name: "seal-home",
-      version: "0.1.0"
+      version: "0.3.0"
     },
     {
       capabilities: {
@@ -30,11 +30,6 @@ async function main() {
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
       {
-        name: "seal_corps_list",
-        description: "列出本地配置的 Seal 企业",
-        inputSchema: { type: "object", properties: {} }
-      },
-      {
         name: "seal_corp_switch",
         description: "切换当前 Seal 企业",
         inputSchema: {
@@ -45,12 +40,7 @@ async function main() {
           required: ["corpId"]
         }
       },
-      {
-        name: "seal_source_config",
-        description: "通过当前来源认证并读取 Seal 租户信息，解析 Seal 企业配置",
-        inputSchema: { type: "object", properties: {} }
-      },
-      ...sealTools.map((tool) => ({
+      ...sealMcpTools.map((tool) => ({
         name: tool.name,
         description: tool.description,
         inputSchema: z.toJSONSchema(tool.parameters)
@@ -91,7 +81,7 @@ async function main() {
         return textResult(await resolveLiveSealEnterpriseConfig(currentCorp));
       }
 
-      const tool = sealTools.find((item) => item.name === name);
+      const tool = findSealMcpTool(name) ?? findSealTool(name);
       if (!tool) {
         return textResult({ error: `Unknown tool: ${name}` }, true);
       }
