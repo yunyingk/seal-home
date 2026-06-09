@@ -6,6 +6,8 @@ import { resolveLiveSealEnterpriseConfig } from "./domains/seal/source.js";
 import { sealTools, type SealTool } from "./domains/seal/tools.js";
 import { CorpConfig } from "./core/config/types.js";
 
+const VERSION = "0.3.0";
+
 type ParsedArgs = {
   command: string[];
   options: Record<string, string | boolean>;
@@ -18,6 +20,14 @@ async function main() {
 
   if (!area || area === "help" || args.options.help) {
     printHelp();
+    return;
+  }
+
+  if (area === "version") {
+    printJson({
+      name: "seal-home",
+      version: VERSION
+    });
     return;
   }
 
@@ -210,6 +220,7 @@ function printHelp() {
   console.log(`seal-home CLI
 
 Usage:
+  seal-home version
   seal-home tools list
   seal-home corps list [--corp <corpId>]
   seal-home source config [--corp <corpId>]

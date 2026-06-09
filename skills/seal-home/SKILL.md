@@ -11,6 +11,7 @@ Run commands from the seal-home repository root:
 
 ```bash
 bun run cli -- help
+bun run cli -- version
 bun run cli -- tools list
 ```
 
@@ -73,7 +74,7 @@ Use for "which rule/document mentions X" or before changing rule/document conten
 bun run cli -- tool seal_approval_search --json '{"keywords":["关键词"],"matchMode":"any","maxResults":20}'
 ```
 
-Use `areas` to narrow to `rules`, `documents`, or `preferences`. Use `refresh:true` when recent edits may not be reflected in the in-memory cache.
+Use `areas` to narrow to `rules`, `documents`, or `preferences`. Use `refresh:true` when recent edits may not be reflected in the MCP server's in-memory cache. Separate CLI invocations are short-lived processes and do not share this cache.
 
 ### Update approval rules
 

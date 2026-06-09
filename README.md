@@ -34,6 +34,15 @@ bun run cli -- source config
 bun run cli -- tools list
 ```
 
+Update an existing checkout:
+
+```bash
+git pull
+bun install
+bun run cli -- version
+bun run cli -- tools list
+```
+
 Local enterprise config files are ignored by git:
 
 ```text
@@ -86,7 +95,7 @@ CLI output is JSON on stdout. Errors are written to stderr.
 
 - `seal_corp_switch`: switch the active local enterprise config.
 - `seal_whoami`: current Seal user and tenant.
-- `seal_approval_search`: keyword search across approval rules, documents, approval preferences, and optionally published rule history. Results include area, entity, field, line number, and surrounding context. Search data is cached in memory for 5 minutes.
+- `seal_approval_search`: keyword search across approval rules, documents, approval preferences, and optionally published rule history. Results include area, entity, field, line number, and surrounding context. Search data is cached in memory for 5 minutes only within a long-lived process such as the MCP server; separate CLI invocations do not share this cache.
 - `seal_approval_context_get`: read current approval rules, approval documents, and approval style preferences in one call.
 - `seal_runs_search`: search the approval run history from `api/v1/approvals`. This is the broad record table for historical runs and returns compact run fields; set `includeBridge` only when full Langfuse bridge rows are needed.
 - `seal_action`: low-frequency management router. Use `action: "help"` or `payload.topic` to discover actions.

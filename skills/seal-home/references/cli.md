@@ -9,6 +9,7 @@ bun run cli -- <command>
 ## Top-Level Commands
 
 ```bash
+bun run cli -- version
 bun run cli -- tools list
 bun run cli -- corps list [--corp <corpId>]
 bun run cli -- source config [--corp <corpId>]
@@ -20,6 +21,15 @@ bun run cli -- simulation batch-records <batchId>
 ```
 
 ## Fine-Grained Tools
+
+`bun run cli -- version` returns:
+
+```json
+{
+  "name": "seal-home",
+  "version": "0.3.0"
+}
+```
 
 Identity and session:
 
@@ -184,6 +194,7 @@ Update style preferences:
 
 ## Failure Handling
 
+- CLI commands are short-lived processes. In-memory auth/search caches only live for that single process. The MCP server is long-lived, so it can reuse in-memory caches across tool calls until refresh or TTL expiry.
 - If no run is found by `sourceDocumentSN`, retry with `sourceDocumentId` or a broader `query`.
 - If date-based summaries look wrong, pass `--timezone Asia/Shanghai` and an explicit `--date`.
 - If `langfuseTraceId` is missing, use `langfuseSessionFallback`.
