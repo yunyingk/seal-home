@@ -34,15 +34,16 @@ bun link
 seal-home version
 ```
 
-Create a user-level enterprise config that works from any directory:
+Create a user-level Hose enterprise config that works from any directory:
 
 ```bash
 mkdir -p ~/.config/seal-home/enterprises
-cp enterprises/example.hose.json ~/.config/seal-home/enterprises/local.json
-# Edit ~/.config/seal-home/enterprises/local.json with your own Hose/Seal credentials.
-seal-home source config
+seal-home corps add-hose --json '{"name":"企业名称","domain":"https://app.ekuaibao.com","appKey":"...","appSecurity":"...","proxyStaffBizId":"corpId:staffId"}'
+seal-home auth diagnose
 seal-home tools list
 ```
+
+`corps add-hose` verifies by default before writing the config. It uses the Hose OpenAPI credential response to derive the corporation ID, then checks provisional auth, Seal SSO, and Seal `whoami`. Pass `"force":true` or `"verify":false` only when you intentionally want to write a config that may fail later.
 
 For custom config locations, set `SEAL_HOME_ENTERPRISES_DIR` to a directory containing non-example `*.json` enterprise config files.
 
@@ -72,17 +73,20 @@ seal-home version
 seal-home config paths
 seal-home tools list
 seal-home corps list
+seal-home auth diagnose
 seal-home approval-runs summary --date 2026-06-08 --timezone Asia/Shanghai
 seal-home tool seal_approval_runs_summary --json '{"date":"2026-06-08","timezone":"Asia/Shanghai"}'
 ```
 
 CLI output is JSON on stdout. Errors are written to stderr.
 
-Enterprise config lookup order:
+Enterprise config lookup:
 
-1. `SEAL_HOME_ENTERPRISES_DIR`
-2. `./enterprises` in the current working directory
-3. `~/.config/seal-home/enterprises`
+- If `SEAL_HOME_ENTERPRISES_DIR` is set, only that directory is loaded.
+- Otherwise `./enterprises` and `~/.config/seal-home/enterprises` are merged.
+- User-level configs override same-ID configs from `./enterprises`.
+
+Use `seal-home auth diagnose [--corp <corpId>]` when login fails. It reports four stages without printing tokens: `hose.openapi`, `hose.provisional`, `seal.sso`, and `seal.whoami`. A failed stage points to whether the problem is Hose app credentials, staff authorization, Seal SSO/tenant reachability, or Seal user/session access.
 
 ## Local Service
 

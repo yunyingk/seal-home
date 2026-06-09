@@ -17,7 +17,7 @@ seal-home tools list
 
 Use CLI for broad or detailed operations. The CLI intentionally exposes the full fine-grained tool list and is the primary interface for shared/public use.
 
-Enterprise configs are loaded from `SEAL_HOME_ENTERPRISES_DIR`, `./enterprises`, or `~/.config/seal-home/enterprises`, in that order. Prefer user-level config for shared/public installs so commands do not depend on the repository working directory.
+Enterprise configs are loaded from `SEAL_HOME_ENTERPRISES_DIR` when it is set. Otherwise `./enterprises` and `~/.config/seal-home/enterprises` are merged, with user-level configs overriding same-ID local configs. Prefer user-level config for shared/public installs so commands do not depend on the repository working directory.
 
 Optional local service commands:
 
@@ -35,6 +35,7 @@ Use `seal-home update` after pulling new versions; it restarts the service if it
 
 - For current identity or tenant: use `seal-home tool seal_whoami`.
 - For configured enterprises: use `seal-home corps list`.
+- For Hose login, SSO, or "Unable to connect" authentication failures: use `seal-home auth diagnose [--corp <corpId>]`.
 - For source-derived enterprise config: use `seal-home source config`.
 - For daily approval run questions: use `seal-home approval-runs summary --date YYYY-MM-DD --timezone Asia/Shanghai`.
 - For approval run lookup by document SN, ID, status, mode, or trace: use `seal-home approval-runs search`.
@@ -43,6 +44,23 @@ Use `seal-home update` after pulling new versions; it restarts the service if it
 - For approval rule/document/style maintenance: use `seal-home tool <toolName> --json '{...}'`.
 
 ## Task Playbooks
+
+### Diagnose Hose authentication
+
+Use when a Hose/合思 sourced enterprise cannot log in, `seal_whoami` fails, or an agent needs to verify a newly added enterprise config.
+
+```bash
+seal-home auth diagnose --corp <corpId>
+```
+
+Read the JSON `stages` in order:
+
+- `hose.openapi`: appKey/appSecurity can get a Hose OpenAPI token and corporation ID.
+- `hose.provisional`: `proxyStaffBizId`/staff ID can get a provisional auth URL.
+- `seal.sso`: Seal accepts the Hose provisional token and returns a bearer session.
+- `seal.whoami`: the Seal bearer can read current user and tenant.
+
+Do not expect tokens in the output; the command intentionally redacts or omits them. If a stage fails, report that stage and its error, then stop assuming later stages worked.
 
 ### Diagnose one approval document
 

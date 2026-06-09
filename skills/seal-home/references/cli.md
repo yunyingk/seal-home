@@ -6,11 +6,11 @@ Run from any directory after installing the global CLI:
 seal-home <command>
 ```
 
-Enterprise config lookup order:
+Enterprise config lookup:
 
-1. `SEAL_HOME_ENTERPRISES_DIR`
-2. `./enterprises` in the current working directory
-3. `~/.config/seal-home/enterprises`
+- If `SEAL_HOME_ENTERPRISES_DIR` is set, only that directory is loaded.
+- Otherwise `./enterprises` and `~/.config/seal-home/enterprises` are merged.
+- User-level configs override same-ID local configs.
 
 ## Top-Level Commands
 
@@ -21,6 +21,10 @@ seal-home service <start|stop|restart|status>
 seal-home update
 seal-home tools list
 seal-home corps list [--corp <corpId>]
+seal-home corps current
+seal-home corps switch <corpId>
+seal-home corps add-hose --json '{"name":"企业名称","domain":"https://app.ekuaibao.com","appKey":"...","appSecurity":"...","proxyStaffBizId":"corpId:staffId"}'
+seal-home auth diagnose [--corp <corpId>]
 seal-home source config [--corp <corpId>]
 seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
 seal-home approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
@@ -46,6 +50,7 @@ seal-home simulation batch-records <batchId>
 
 Identity and session:
 
+- `seal-home auth diagnose [--corp <corpId>]`
 - `seal_whoami`
 - `seal_session_get`
 
@@ -83,6 +88,27 @@ Approval runs, simulations, and Langfuse bridge:
 - `seal_approval_run_langfuse_bridge_get`
 
 ## Common Examples
+
+Add and verify a Hose enterprise:
+
+```bash
+seal-home corps add-hose --json '{"name":"企业名称","domain":"https://app.ekuaibao.com","appKey":"...","appSecurity":"...","proxyStaffBizId":"corpId:staffId"}'
+seal-home auth diagnose --corp <corpId>
+```
+
+Force-write a Hose config without verification:
+
+```bash
+seal-home corps add-hose --json '{"name":"企业名称","domain":"https://app.ekuaibao.com","appKey":"...","appSecurity":"...","proxyStaffBizId":"corpId:staffId","force":true}'
+```
+
+Diagnose auth failures:
+
+```bash
+seal-home auth diagnose --corp <corpId>
+```
+
+The diagnostic stages are `hose.openapi`, `hose.provisional`, `seal.sso`, and `seal.whoami`. Tokens are omitted from output.
 
 Search approval content:
 

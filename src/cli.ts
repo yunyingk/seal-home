@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { getEnterprisesDirCandidates, loadCorpConfigs, resolveWritableEnterprisesDir } from "./core/config/loader.js";
 import { createSealClient } from "./core/http/factory.js";
 import { resolveLiveSealEnterpriseConfig } from "./domains/seal/source.js";
+import { getMe } from "./domains/seal/api.js";
 import { sealTools, type SealTool } from "./domains/seal/tools.js";
 import { CorpConfig } from "./core/config/types.js";
 import { clearCorpTokenCache } from "./core/auth/token-store.js";
@@ -110,6 +111,11 @@ async function main() {
 
   if (area === "source" && action === "config") {
     printJson(await resolveLiveSealEnterpriseConfig(corp));
+    return;
+  }
+
+  if (area === "auth" && action === "diagnose") {
+    printJson(await diagnoseAuth(corp));
     return;
   }
 
@@ -475,6 +481,263 @@ async function addHoseCorp(input: Record<string, unknown>) {
   });
 }
 
+async function diagnoseAuth(corp: CorpConfig) {
+  if (corp.source.type !== "hose") {
+    const client = await createSealClient(corp);
+    const me = await getMe(client);
+    return {
+      corp: {
+        id: corp.id,
+        name: corp.name,
+        sourceType: corp.source.type
+      },
+      ok: true,
+      stages: [
+        {
+          name: "seal.whoami",
+          ok: true,
+          user: me.user,
+          tenant: me.tenant
+        }
+      ]
+    };
+  }
+
+  clearCorpTokenCache(corp.id);
+  const source = corp.source;
+  const appKey = source.appKey ?? source.key;
+  const appSecurity = source.appSecurity ?? source.password;
+  const sealUrl = (corp.seal.url ?? source.sealUrl ?? `https://${source.corpId.toLowerCase()}.sealai.cc`).replace(/\/+$/, "");
+  const uid = source.staffId.includes(":") ? source.staffId : `${source.corpId}:${source.staffId}`;
+  const stages: Array<Record<string, unknown>> = [];
+
+  if (!appKey || !appSecurity) {
+    return {
+      corp: {
+        id: corp.id,
+        name: corp.name,
+        sourceType: corp.source.type
+      },
+      ok: false,
+      stages: [
+        {
+          name: "hose.openapi",
+          ok: false,
+          error: "Hose source requires appKey/key and appSecurity/password"
+        }
+      ]
+    };
+  }
+
+  const openapi = await runDiagnoseStage("hose.openapi", async () => {
+    const json = await postJson(`${source.domain.replace(/\/+$/, "")}/api/openapi/v1/auth/getAccessToken`, {
+      appKey,
+      appSecurity
+    });
+    const value = objectValue(json.value);
+    const token = stringValue(value.accessToken) ?? stringValue(json.accessToken) ?? stringValue(json.token);
+    if (!token) throw new Error("Hose login did not return an access token");
+    return {
+      token,
+      public: {
+        corporationId: stringValue(value.corporationId) ?? stringValue(objectValue(value.corporation).id),
+        expireTime: numberValue(value.expireTime)
+      }
+    };
+  });
+  stages.push(openapi.public);
+
+  const openapiToken = openapi.private?.token;
+  const provisional = openapiToken
+    ? await runDiagnoseStage("hose.provisional", async () => {
+      const json = await postJson(
+        `${source.domain.replace(/\/+$/, "")}/api/openapi/v1.1/provisional/getProvisionalAuth?accessToken=${encodeURIComponent(openapiToken)}`,
+        {
+          uid,
+          pageType: "home",
+          expireDate: 7200
+        }
+      );
+      const url = stringValue(objectValue(json.value).message);
+      if (!url) throw new Error("Hose CloseAPI did not return a provisional auth URL");
+      const token = new URL(url).searchParams.get("accessToken");
+      if (!token) throw new Error("Hose provisional auth URL did not include accessToken");
+      return {
+        token,
+        public: {
+          uid,
+          hasProvisionalUrl: true
+        }
+      };
+    })
+    : skippedStage("hose.provisional");
+  stages.push(provisional.public);
+
+  const provisionalToken = provisional.private?.token;
+  const sealSession = provisionalToken
+    ? await runDiagnoseStage("seal.sso", async () => {
+      const json = await getJson(
+        `${sealUrl}/api/auth/oauth2/session/oem-hosecloud?token=${encodeURIComponent(provisionalToken)}&returnToken=1`
+      );
+      const data = objectValue(json.data);
+      const token =
+        stringValue(json.token) ??
+        stringValue(json.accessToken) ??
+        stringValue(data.token) ??
+        stringValue(data.accessToken);
+      if (!token) throw new Error("Seal SSO did not return a bearer token");
+      return {
+        token,
+        public: {
+          sealUrl,
+          expiresIn: numberValue(json.expiresIn) ?? numberValue(json.expires_in) ?? numberValue(data.expiresIn) ?? numberValue(data.expires_in)
+        }
+      };
+    })
+    : skippedStage("seal.sso");
+  stages.push(sealSession.public);
+
+  const sealToken = sealSession.private?.token;
+  const whoami = sealToken
+    ? await runDiagnoseStage("seal.whoami", async () => {
+      const json = await getJson(`${sealUrl}/api/v1/auth/me`, {
+        authorization: `Bearer ${sealToken}`
+      });
+      const data = objectValue(json.data);
+      const user = objectValue(data.user ?? json.user);
+      const tenant = objectValue(data.tenant ?? json.tenant);
+      return {
+        public: {
+          user: {
+            id: stringValue(user.id),
+            name: stringValue(user.name),
+            isAdmin: booleanValue(user.isAdmin),
+            providerUserId: stringValue(user.providerUserId)
+          },
+          tenant: {
+            id: stringValue(tenant.id),
+            name: stringValue(tenant.name),
+            tenantSlug: stringValue(tenant.tenantSlug),
+            hoseCorpConfig: summarizeHoseCorpConfig(tenant.hoseCorpConfig)
+          }
+        }
+      };
+    })
+    : skippedStage("seal.whoami");
+  stages.push(whoami.public);
+
+  return {
+    corp: {
+      id: corp.id,
+      name: corp.name,
+      sourceType: corp.source.type
+    },
+    ok: stages.every((stage) => stage.ok === true),
+    stages
+  };
+}
+
+type DiagnoseStageResult = {
+  public: Record<string, unknown>;
+  private?: {
+    token?: string;
+  };
+};
+
+async function runDiagnoseStage(
+  name: string,
+  action: () => Promise<{ public: Record<string, unknown>; token?: string }>
+): Promise<DiagnoseStageResult> {
+  try {
+    const result = await action();
+    return {
+      public: {
+        name,
+        ok: true,
+        ...compactObject(result.public)
+      },
+      private: result.token ? { token: result.token } : undefined
+    };
+  } catch (error) {
+    return {
+      public: {
+        name,
+        ok: false,
+        error: redactSensitiveText(error instanceof Error ? error.message : String(error))
+      }
+    };
+  }
+}
+
+function skippedStage(name: string): DiagnoseStageResult {
+  return {
+    public: {
+      name,
+      ok: false,
+      skipped: true
+    }
+  };
+}
+
+async function postJson(url: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+  return parseJsonResponse(response);
+}
+
+async function getJson(url: string, headers: Record<string, string> = {}): Promise<Record<string, unknown>> {
+  const response = await fetch(url, {
+    headers
+  });
+  return parseJsonResponse(response);
+}
+
+async function parseJsonResponse(response: Response): Promise<Record<string, unknown>> {
+  const body = await response.text();
+  if (!response.ok) {
+    throw new Error(`${response.status} ${body}`);
+  }
+  const json = JSON.parse(body) as unknown;
+  return objectValue(json);
+}
+
+function objectValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function summarizeHoseCorpConfig(value: unknown) {
+  const config = objectValue(value);
+  return compactObject({
+    corporationId: stringValue(config.corporationId),
+    corporationName: stringValue(config.corporationName)
+  });
+}
+
+function compactObject<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined)
+  ) as T;
+}
+
 function requiredString(input: Record<string, unknown>, key: string): string {
   const value = optionalString(input, key);
   if (!value) throw new Error(`Missing required JSON field: ${key}`);
@@ -683,6 +946,7 @@ Usage:
   seal-home corps current
   seal-home corps switch <corpId>
   seal-home corps add-hose --json '{"name":"企业名称","domain":"https://app.ekuaibao.com","appKey":"...","appSecurity":"...","proxyStaffBizId":"corpId:staffId"}'
+  seal-home auth diagnose [--corp <corpId>]
   seal-home source config [--corp <corpId>]
   seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
   seal-home rules versions [--corp <corpId>]
