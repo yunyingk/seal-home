@@ -61,6 +61,49 @@ describe("sealTools", () => {
     expect(tool).toBeDefined();
   });
 
+  test("approval rules list can return count only", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_rules_list");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(fakeRulesClient(), { countOnly: true }, fakeContext());
+
+    expect(result).toEqual({ count: 2 });
+  });
+
+  test("approval rules list treats limit zero as count only", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_rules_list");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(fakeRulesClient(), { fields: ["id"], limit: 0 }, fakeContext());
+
+    expect(result).toEqual({ count: 2 });
+  });
+
+  test("approval rules list can project lightweight fields", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_rules_list");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeRulesClient(),
+      { fields: ["id", "status", "strictness", "scope"], limit: 1 },
+      fakeContext()
+    ) as { count: number; rules: Array<Record<string, unknown>> };
+
+    expect(result.count).toBe(2);
+    expect(result.rules).toEqual([
+      {
+        id: "rule-1",
+        status: "active",
+        strictness: "MUST_FOLLOW",
+        scope: "travel"
+      }
+    ]);
+    expect(result.rules[0]).not.toHaveProperty("description");
+  });
+
   test("includes approval run Langfuse bridge tools", () => {
     expect(sealTools.find((item) => item.name === "seal_approval_runs_search")).toBeDefined();
     expect(sealTools.find((item) => item.name === "seal_approval_runs_summary")).toBeDefined();
@@ -377,6 +420,40 @@ function fakeApprovalRunsClient(requests: string[] = []): KyInstance {
               sourceDocumentSN: "B26001762",
               sourceDocumentId: "doc-source-3",
               createdAt: 1780742324888
+            }
+          ]
+        }
+      })
+    })
+  } as unknown as KyInstance;
+}
+
+function fakeRulesClient(): KyInstance {
+  return {
+    get: () => ({
+      json: async () => ({
+        data: {
+          hasPendingDeletes: false,
+          rules: [
+            {
+              id: "rule-1",
+              tenantId: "tenant-1",
+              description: "Must include full invoice detail",
+              scope: "travel",
+              strictness: "MUST_FOLLOW",
+              status: "active",
+              createdAt: 1780898164536,
+              updatedAt: 1780898164536
+            },
+            {
+              id: "rule-2",
+              tenantId: "tenant-1",
+              description: "Prefer matching attendee names",
+              scope: "meal",
+              strictness: "SHOULD_FOLLOW",
+              status: "draft",
+              createdAt: 1780898164537,
+              updatedAt: 1780898164537
             }
           ]
         }
