@@ -41,6 +41,7 @@ Use `seal-home update` after pulling new versions; it restarts the service if it
 - For source-derived enterprise config: use `seal-home source config`.
 - For daily approval run questions: use `seal-home approval-runs summary --date YYYY-MM-DD --timezone Asia/Shanghai`.
 - For approval run lookup by document SN, ID, status, mode, or trace: use `seal-home approval-runs search`.
+- For Hose enterprise assist links: use `seal-home approval-runs url`; add `<recordId>` or `--sourceDocumentSN B26001887` when a document link is also needed.
 - For Langfuse lookup hints: use `seal-home approval-runs bridge`.
 - For one simulation batch: use `seal-home simulation batch-records <batchId>`.
 - For approval rule/document/style maintenance: use `seal-home tool <toolName> --json '{...}'`.
@@ -170,6 +171,8 @@ Preferred command forms:
 ```bash
 seal-home approval-runs summary --date 2026-06-09 --timezone Asia/Shanghai
 seal-home approval-runs search --query B26001887 --limit 20 --includeBridge true
+seal-home approval-runs url
+seal-home approval-runs url --sourceDocumentSN B26001887
 seal-home approval-runs bridge --sourceDocumentSN B26001887
 seal-home tool seal_approval_search --json '{"keywords":["差旅","发票"],"areas":["rules","documents"]}'
 ```

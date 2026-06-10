@@ -1,0 +1,22 @@
+paths:
+  /v1/simulation/batches/{batchId}/records:
+    parameters:
+      - $ref: ../components/parameters.yaml#/BatchId
+    get:
+      tags: [Simulation]
+      operationId: getSimulationBatchRecords
+      summary: Get wrapped simulation batch records
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+          description: Optional local contains filter for record/document/trace identifiers.
+      responses:
+        "200":
+          description: Compact simulation records and bridge hints.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true

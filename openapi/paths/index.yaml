@@ -1,0 +1,48 @@
+/v1/corps:
+  $ref: ./corps.yaml#/paths/~1v1~1corps
+/v1/corps/current:
+  $ref: ./corps.yaml#/paths/~1v1~1corps~1current
+/v1/corps/current/switch:
+  $ref: ./corps.yaml#/paths/~1v1~1corps~1current~1switch
+/v1/source/config:
+  $ref: ./source.yaml#/paths/~1v1~1source~1config
+/v1/auth/diagnose:
+  $ref: ./auth.yaml#/paths/~1v1~1auth~1diagnose
+/v1/whoami:
+  $ref: ./auth.yaml#/paths/~1v1~1whoami
+/v1/session:
+  $ref: ./auth.yaml#/paths/~1v1~1session
+/v1/approval/context:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1context
+/v1/approval/search:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1search
+/v1/approval/rules:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1rules
+/v1/approval/rules/{ruleId}:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1rules~1{ruleId}
+/v1/approval/rule-versions:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1rule-versions
+/v1/approval/rule-versions/{versionId}:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1rule-versions~1{versionId}
+/v1/approval/rule-versions/publish:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1rule-versions~1publish
+/v1/approval/documents:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1documents
+/v1/approval/documents/{documentId}:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1documents~1{documentId}
+/v1/approval/style-preferences:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1style-preferences
+/v1/approval-runs:
+  $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs
+/v1/approval-runs/summary:
+  $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1summary
+/v1/approval-runs/pick:
+  $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1pick
+/v1/approval-runs/bridge:
+  $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1bridge
+/v1/approval-runs/url:
+  $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1url
+/v1/approval-runs/{recordId}:
+  $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1{recordId}
+/v1/simulation/batches/{batchId}/records:
+  $ref: ./simulation.yaml#/paths/~1v1~1simulation~1batches~1{batchId}~1records

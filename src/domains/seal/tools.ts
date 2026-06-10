@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { KyInstance } from "ky";
 import * as api from "./api.js";
+import { getHoseEnterpriseUrl } from "../../core/auth/hose.js";
 import { CorpConfig } from "../../core/config/types.js";
 import { searchApprovalContent } from "./search.js";
 import type { ApprovalRun, RuleSetVersion } from "./types.js";
@@ -350,9 +351,12 @@ export const sealTools = [
         includeBridge?: boolean;
       }
     ) => {
-      const data = await api.listApprovalRuns(client, withApprovalRunFilters(params));
+      const query = params.query?.trim();
+      const data = await api.listApprovalRuns(client, withApprovalRunFilters({
+        ...params,
+        search: query
+      }));
       const records = await prepareApprovalRuns(client, data.records, {
-        query: params.query,
         humanResult: params.humanResult
       });
 
@@ -445,6 +449,41 @@ export const sealTools = [
         ...record,
         aliases: approvalRunAliases(record),
         humanResult: extractHumanResult(record)
+      };
+    }
+  },
+  {
+    name: "seal_approval_run_url_get",
+    description: "获取合思企业协助链接，按需附带单据链接；支持只取企业协助链接，或按 Seal recordId/合思 sourceDocumentSN 查询单据链接",
+    parameters: z.object({
+      recordId: z.string().optional().describe("Seal approval run record ID"),
+      sourceDocumentSN: z.string().optional().describe("合思/易快报单号"),
+      sourceDocumentId: z.string().optional().describe("合思/易快报源单据 ID")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { recordId?: string; sourceDocumentSN?: string; sourceDocumentId?: string },
+      context: ToolContext
+    ) => {
+      const hasDocumentLookup = Boolean(params.recordId || params.sourceDocumentSN || params.sourceDocumentId);
+      const record = hasDocumentLookup ? await resolveApprovalRunForUrl(client, params) : undefined;
+      const source = context.corp.source;
+      const enterpriseAssistUrl = source.type === "hose" ? await getHoseEnterpriseUrl(context.corp) : undefined;
+      const documentUrl = stringFromUnknown(record?.sourceExtendData?.hosecloudViewUrl);
+
+      return {
+        enterpriseAssistUrl,
+        enterpriseUrl: enterpriseAssistUrl,
+        hoseDomain: source.type === "hose" ? normalizeUrl(source.domain) : undefined,
+        documentUrl,
+        recordId: record?.id,
+        sourceDocumentSN: record?.sourceDocumentSN,
+        sourceDocumentId: record?.sourceDocumentId,
+        sourceSystem: record?.sourceSystem,
+        missing: {
+          enterpriseAssistUrl: enterpriseAssistUrl ? undefined : "Current enterprise source is not Hose, so no Hose enterprise assist URL is configured.",
+          documentUrl: hasDocumentLookup && !documentUrl ? "sourceExtendData.hosecloudViewUrl is absent from the approval run detail." : undefined
+        }
       };
     }
   },
@@ -550,6 +589,7 @@ export const sealTools = [
         ? await api.listSimulationBatchRecords(client, params.simulationBatchId)
         : (await api.listApprovalRuns(client, {
             limit: params.limit ?? 50,
+            search: params.sourceDocumentSN ?? params.sourceDocumentId,
             sourceDocumentSN: params.sourceDocumentSN,
             sourceDocumentId: params.sourceDocumentId
           })).records;
@@ -600,6 +640,7 @@ const sealActionNames = [
   "seal_approval_style_preferences_update",
   "seal_approval_runs_summary",
   "seal_approval_run_get",
+  "seal_approval_run_url_get",
   "seal_approval_run_pick",
   "seal_simulation_batch_records_get",
   "seal_approval_run_langfuse_bridge_get"
@@ -622,6 +663,7 @@ const sealActionAliases: Record<string, (typeof sealActionNames)[number]> = {
   "style.update": "seal_approval_style_preferences_update",
   "runs.summary": "seal_approval_runs_summary",
   "runs.get": "seal_approval_run_get",
+  "runs.url": "seal_approval_run_url_get",
   "runs.pick": "seal_approval_run_pick",
   "batch.records.get": "seal_simulation_batch_records_get",
   "langfuse.bridge.get": "seal_approval_run_langfuse_bridge_get"
@@ -840,6 +882,39 @@ function summarizeRuleVersion(version: RuleSetVersion) {
     publishedAt: version.publishedAt,
     createdAt: version.createdAt
   };
+}
+
+async function resolveApprovalRunForUrl(
+  client: KyInstance,
+  params: { recordId?: string; sourceDocumentSN?: string; sourceDocumentId?: string }
+): Promise<ApprovalRun> {
+  if (params.recordId) {
+    return api.getApprovalRun(client, params.recordId);
+  }
+
+  const data = await api.listApprovalRuns(client, {
+    limit: 1,
+    search: params.sourceDocumentSN ?? params.sourceDocumentId,
+    sourceDocumentSN: params.sourceDocumentSN,
+    sourceDocumentId: params.sourceDocumentId
+  });
+  const record = data.records[0];
+  if (!record) {
+    const lookup = params.sourceDocumentSN
+      ? `sourceDocumentSN ${params.sourceDocumentSN}`
+      : `sourceDocumentId ${params.sourceDocumentId}`;
+    throw new Error(`Approval run not found for ${lookup}`);
+  }
+
+  return api.getApprovalRun(client, record.id);
+}
+
+function normalizeUrl(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function stringFromUnknown(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value : undefined;
 }
 
 async function pickApprovalRuns(

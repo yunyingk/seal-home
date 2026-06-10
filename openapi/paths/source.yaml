@@ -1,0 +1,17 @@
+paths:
+  /v1/source/config:
+    get:
+      tags: [Source]
+      operationId: getSourceConfig
+      summary: Resolve source-derived Seal enterprise config
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+      responses:
+        "200":
+          description: Redacted Seal enterprise config.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/SourceConfig
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized

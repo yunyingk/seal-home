@@ -1,0 +1,254 @@
+paths:
+  /v1/approval/context:
+    get:
+      tags: [Approval Knowledge]
+      operationId: getApprovalContext
+      summary: Get rules, documents, and style preferences together
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+        - name: documentLimit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: latestRuleVersion
+          in: query
+          schema:
+            type: boolean
+        - name: ruleVersionNumber
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Approval context.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalContext
+  /v1/approval/search:
+    post:
+      tags: [Approval Knowledge]
+      operationId: searchApprovalKnowledge
+      summary: Search approval rules, documents, and preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas/index.yaml#/ApprovalSearchRequest
+      responses:
+        "200":
+          description: Search results with line context.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalSearchResponse
+  /v1/approval/rules:
+    get:
+      tags: [Approval Knowledge]
+      operationId: listApprovalRules
+      summary: List current draft approval rules
+      responses:
+        "200":
+          description: Draft rules.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalRulesResponse
+    post:
+      tags: [Approval Knowledge]
+      operationId: createApprovalRule
+      summary: Create draft approval rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas/index.yaml#/ApprovalRuleInput
+      responses:
+        "200":
+          description: Created rule.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalRule
+  /v1/approval/rules/{ruleId}:
+    parameters:
+      - $ref: ../components/parameters.yaml#/RuleId
+    patch:
+      tags: [Approval Knowledge]
+      operationId: updateApprovalRule
+      summary: Update draft approval rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas/index.yaml#/ApprovalRulePatch
+      responses:
+        "200":
+          description: Updated rule.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalRule
+    delete:
+      tags: [Approval Knowledge]
+      operationId: deleteApprovalRule
+      summary: Delete draft approval rule
+      responses:
+        "200":
+          description: Deleted.
+  /v1/approval/rule-versions:
+    get:
+      tags: [Approval Knowledge]
+      operationId: listApprovalRuleVersions
+      summary: List published approval rule versions
+      responses:
+        "200":
+          description: Published rule versions.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: ../components/schemas/index.yaml#/RuleSetVersion
+  /v1/approval/rule-versions/{versionId}:
+    parameters:
+      - $ref: ../components/parameters.yaml#/VersionId
+    get:
+      tags: [Approval Knowledge]
+      operationId: getApprovalRuleVersion
+      summary: Get published approval rule version
+      responses:
+        "200":
+          description: Rule version.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/RuleSetVersion
+  /v1/approval/rule-versions/publish:
+    post:
+      tags: [Approval Knowledge]
+      operationId: publishApprovalRuleVersion
+      summary: Publish current draft rules
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas/index.yaml#/PublishRuleVersionRequest
+      responses:
+        "200":
+          description: Published version.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /v1/approval/documents:
+    get:
+      tags: [Approval Knowledge]
+      operationId: listApprovalDocuments
+      summary: List approval knowledge documents
+      parameters:
+        - $ref: ../components/parameters.yaml#/Offset
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 20
+        - name: scenario
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
+      responses:
+        "200":
+          description: Documents.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalDocumentsResponse
+    post:
+      tags: [Approval Knowledge]
+      operationId: createApprovalDocument
+      summary: Create approval knowledge document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas/index.yaml#/ApprovalDocumentInput
+      responses:
+        "200":
+          description: Created document.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalDocument
+  /v1/approval/documents/{documentId}:
+    parameters:
+      - $ref: ../components/parameters.yaml#/DocumentId
+    get:
+      tags: [Approval Knowledge]
+      operationId: getApprovalDocument
+      summary: Get approval knowledge document
+      responses:
+        "200":
+          description: Document.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalDocument
+    patch:
+      tags: [Approval Knowledge]
+      operationId: updateApprovalDocument
+      summary: Update approval knowledge document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas/index.yaml#/ApprovalDocumentPatch
+      responses:
+        "200":
+          description: Updated document.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalDocument
+  /v1/approval/style-preferences:
+    get:
+      tags: [Approval Knowledge]
+      operationId: getApprovalStylePreferences
+      summary: Get approval style preferences
+      responses:
+        "200":
+          description: Style preferences.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalStylePreferences
+    patch:
+      tags: [Approval Knowledge]
+      operationId: updateApprovalStylePreferences
+      summary: Update approval style preferences
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas/index.yaml#/ApprovalStylePreferences
+      responses:
+        "200":
+          description: Updated style preferences.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalStylePreferences

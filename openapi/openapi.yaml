@@ -1,0 +1,43 @@
+openapi: 3.1.0
+info:
+  title: seal-home Wrapped API
+  version: 0.3.0
+  description: |
+    HTTP contract for the seal-home wrapped backend API.
+
+    These endpoints describe the stable API that frontend developers and agents should use.
+    They are not the raw downstream Seal endpoints. seal-home is responsible for enterprise
+    selection, source authentication, response compaction, and diagnostics-friendly fields.
+servers:
+  - url: http://localhost:8787
+    description: Local seal-home service
+security:
+  - localSession: []
+tags:
+  - name: Corps
+    description: Local enterprise configuration selection.
+  - name: Source
+    description: Source-derived Seal enterprise configuration.
+  - name: Auth
+    description: Wrapped authentication diagnostics and current identity.
+  - name: Approval Runs
+    description: Wrapped approval run history, summaries, document URLs, and trace bridge helpers.
+  - name: Approval Knowledge
+    description: Wrapped approval rules, documents, preferences, and search.
+  - name: Simulation
+    description: Wrapped simulation batch record access.
+paths:
+  $ref: ./paths/index.yaml
+components:
+  securitySchemes:
+    localSession:
+      type: apiKey
+      in: header
+      name: X-Seal-Home-Session
+      description: Optional local service session header for future HTTP deployments.
+  parameters:
+    $ref: ./components/parameters.yaml
+  responses:
+    $ref: ./components/responses.yaml
+  schemas:
+    $ref: ./components/schemas/index.yaml

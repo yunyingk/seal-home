@@ -1,0 +1,47 @@
+paths:
+  /v1/corps:
+    get:
+      tags: [Corps]
+      operationId: listCorps
+      summary: List configured enterprises
+      responses:
+        "200":
+          description: Configured enterprises.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: ../components/schemas/index.yaml#/CorpSummary
+  /v1/corps/current:
+    get:
+      tags: [Corps]
+      operationId: getCurrentCorp
+      summary: Get current enterprise
+      responses:
+        "200":
+          description: Current enterprise.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/CorpSummary
+  /v1/corps/current/switch:
+    post:
+      tags: [Corps]
+      operationId: switchCurrentCorp
+      summary: Switch current enterprise
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: ../components/schemas/index.yaml#/SwitchCorpRequest
+      responses:
+        "200":
+          description: Switched enterprise.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/SwitchCorpResponse
+        "404":
+          $ref: ../components/responses.yaml#/NotFound

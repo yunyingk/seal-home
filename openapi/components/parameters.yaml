@@ -1,0 +1,58 @@
+CorpId:
+  name: corpId
+  in: query
+  schema:
+    type: string
+  description: Optional local enterprise config ID. Defaults to the current selected enterprise.
+Offset:
+  name: offset
+  in: query
+  schema:
+    type: integer
+    minimum: 0
+    default: 0
+  description: Zero-based pagination offset.
+Limit:
+  name: limit
+  in: query
+  schema:
+    type: integer
+    minimum: 1
+    maximum: 100
+    default: 50
+  description: Maximum number of records to return.
+RuleId:
+  name: ruleId
+  in: path
+  required: true
+  schema:
+    type: string
+  description: Approval rule ID.
+VersionId:
+  name: versionId
+  in: path
+  required: true
+  schema:
+    type: string
+  description: Published rule version ID.
+DocumentId:
+  name: documentId
+  in: path
+  required: true
+  schema:
+    type: string
+  description: Approval knowledge document ID.
+RecordId:
+  name: recordId
+  in: path
+  required: true
+  schema:
+    type: string
+  description: seal-home approval run record ID.
+BatchId:
+  name: batchId
+  in: path
+  required: true
+  schema:
+    type: string
+  description: Simulation batch ID.

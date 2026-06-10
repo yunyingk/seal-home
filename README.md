@@ -88,6 +88,26 @@ Enterprise config lookup:
 
 Use `seal-home auth diagnose [--corp <corpId>]` when login fails. It reports four stages without printing tokens: `hose.openapi`, `hose.provisional`, `seal.sso`, and `seal.whoami`. A failed stage points to whether the problem is Hose app credentials, staff authorization, Seal SSO/tenant reachability, or Seal user/session access.
 
+## Wrapped API Documentation
+
+The OpenAPI source under `openapi/` describes the seal-home wrapped API for frontend developers and agents. It is intentionally not the raw downstream Seal API: endpoints are named around seal-home concepts such as corps, auth diagnosis, approval context, run summaries, document URLs, and Langfuse bridge hints.
+
+Source files are split by domain:
+
+```text
+openapi/openapi.yaml
+openapi/paths/
+openapi/components/
+```
+
+Generate a single tool-friendly JSON file:
+
+```bash
+bun run openapi:bundle
+```
+
+The generated file is written to `dist/openapi.json`. Treat `openapi/*.yaml` as the editable source of truth and `dist/openapi.json` as generated output for Swagger UI, Scalar, client generators, or agents.
+
 ## Local Service
 
 For macOS users who want a long-lived local background process and a simple restart point after updates:
@@ -169,6 +189,7 @@ These tools remain available to the CLI:
 - `seal_approval_documents_list`, `seal_approval_document_get`, `seal_approval_document_create`, `seal_approval_document_update`: maintain approval documents.
 - `seal_approval_style_preferences_get`, `seal_approval_style_preferences_update`: read and update approval style preferences.
 - `seal_approval_runs_summary`: summarize approval runs by local date and timezone. Use this for daily questions such as "what approval records did Tawen have today"; it returns status/task-mode counts and compact records.
+- `seal_approval_run_url_get`: return the Hose enterprise assist URL, optionally with the original document URL for an approval run by `recordId`, `sourceDocumentSN`, or `sourceDocumentId`.
 - `seal_simulation_batch_records_get`: read records from one simulation batch via `api/v1/simulation/batch/{batchId}/records`.
 - `seal_approval_run_langfuse_bridge_get`: resolve approval run records to Langfuse lookup hints. It prefers `sourceExtendData._langfuseTraceId`; if that is missing, it returns `hosecloud-{sourceDocumentSN}` as the session fallback.
 
