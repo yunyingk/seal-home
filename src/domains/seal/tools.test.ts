@@ -135,6 +135,20 @@ describe("sealTools", () => {
     expect(result.matched).toBe(2);
   });
 
+  test("routes lightweight approval run actions through seal_action", async () => {
+    const tool = sealMcpTools.find((item) => item.name === "seal_action");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { action: "runs.citedRules", payload: { recordId: "run-1" } },
+      fakeContext()
+    ) as { count: number };
+
+    expect(result.count).toBe(1);
+  });
+
   test("keeps old fine-grained tools available to compatibility callers but hidden from MCP list", () => {
     expect(sealMcpTools.find((item) => item.name === "seal_approval_rule_create")).toBeUndefined();
     expect(findSealMcpTool("seal_approval_rule_create")).toBeUndefined();
@@ -272,10 +286,47 @@ describe("sealTools", () => {
     };
 
     expect(result.metadata?.recordId).toBe("run-1");
-    expect(result.document?.fields).toHaveLength(1);
+    expect(result.document?.fields).toHaveLength(3);
     expect(result.result?.summary).toBe("费用存在风险");
     expect(result.result?.manualApproval).toBeUndefined();
     expect(result.pipelineData).toBeUndefined();
+  });
+
+  test("approval run get can return summary preset", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_get");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { recordId: "run-1", summary: true },
+      fakeContext()
+    ) as { aiResult?: { decision?: string }; manualResult?: string; document?: { title?: string } };
+
+    expect(result.aiResult?.decision).toBe("驳回");
+    expect(result.manualResult).toBe("驳回");
+    expect(result.document?.title).toBe("差旅报销单");
+  });
+
+  test("approval run pick supports sn latest and compact candidate fields", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_pick");
+    expect(tool).toBeDefined();
+
+    const requests: string[] = [];
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(requests),
+      { sn: "B26001965", latest: true },
+      fakeContext()
+    ) as { matched: number; records: Array<{ recordId?: string; aiDecision?: string; aiSummary?: string }> };
+
+    expect(requests[0]).toContain("sourceDocumentSN=B26001965");
+    expect(result.matched).toBe(1);
+    expect(result.records[0]).toMatchObject({
+      recordId: "run-1",
+      aiDecision: "驳回",
+      aiSummary: "费用存在风险"
+    });
   });
 
   test("approval run attachments extracts compact attachment metadata", async () => {
@@ -302,6 +353,48 @@ describe("sealTools", () => {
       fileName: "invoice.png",
       url: "https://signed.example/invoice.png"
     }));
+  });
+
+  test("approval run cited rules extracts rule application details", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_cited_rules_get");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { recordId: "run-1" },
+      fakeContext()
+    ) as { count: number; rules: Array<Record<string, unknown>> };
+
+    expect(result.count).toBe(1);
+    expect(result.rules[0]).toMatchObject({
+      runtimeRuleId: "rule-38",
+      ruleCode: "#0038",
+      versionNumber: 16,
+      scope: "travel",
+      strictness: "MUST_FOLLOW",
+      checkResult: "failed"
+    });
+  });
+
+  test("approval run document summary returns key fields without raw payload", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_document_summary_get");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { recordId: "run-1" },
+      fakeContext()
+    ) as { document?: { amount?: unknown; expenseType?: unknown }; invoices?: Array<Record<string, unknown>> };
+
+    expect(result.document?.amount).toBe("100.00");
+    expect(result.document?.expenseType).toBe("差旅费");
+    expect(result.invoices?.[0]).toMatchObject({
+      buyer: "甲方公司",
+      seller: "乙方公司",
+      amount: 100
+    });
   });
 
   test("approval run result can return summary only", async () => {
@@ -427,6 +520,24 @@ describe("sealTools", () => {
     ]);
     expect(result.records[0]?.createdAt).toBe("2026-06-08 13:56:04");
   });
+
+  test("approval rule get resolves one rule by version and code", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_rule_get");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeRulesClient(),
+      { versionNumber: 16, code: "#0002" },
+      fakeContext()
+    ) as { ruleCode?: string; description?: string; versionNumber?: number };
+
+    expect(result).toMatchObject({
+      ruleCode: "#0002",
+      description: "Second published rule",
+      versionNumber: 16
+    });
+  });
 });
 
 function fakeApprovalRunsClient(requests: string[] = []): KyInstance {
@@ -442,11 +553,16 @@ function fakeApprovalRunsClient(requests: string[] = []): KyInstance {
               sourceDocumentSN: "B26001965",
               sourceDocumentId: "doc-source-1",
               documentId: "normalized-doc-1",
+              ruleSetVersionNumber: 16,
               document: {
                 id: "normalized-doc-1",
+                title: "差旅报销单",
+                templateName: "费用报销",
                 sourceDocumentSN: "B26001965",
                 sourceDocumentId: "doc-source-1",
                 fields: [
+                  { label: "金额", value: "100.00" },
+                  { label: "费用类型", value: "差旅费" },
                   {
                     label: "附件",
                     attachments: [
@@ -461,9 +577,19 @@ function fakeApprovalRunsClient(requests: string[] = []): KyInstance {
                 ]
               },
               result: {
+                decision: "驳回",
                 summary: "费用存在风险",
                 riskPoints: ["金额异常", "附件缺失"],
-                matchedRules: [{ id: "rule-1" }],
+                matchedRules: [{
+                  runtimeRuleId: "rule-38",
+                  ruleCode: "#0038",
+                  versionNumber: 16,
+                  scope: "travel",
+                  strictness: "MUST_FOLLOW",
+                  appliedAnalysis: "发票信息与报销说明不一致",
+                  checkResult: "failed",
+                  findings: ["金额异常"]
+                }],
                 manualApproval: {
                   result: "驳回"
                 },
@@ -471,7 +597,12 @@ function fakeApprovalRunsClient(requests: string[] = []): KyInstance {
                   {
                     fileName: "invoice.png",
                     mimeType: "image/png",
-                    signedUrl: "https://signed.example/invoice.png"
+                    signedUrl: "https://signed.example/invoice.png",
+                    buyer: "甲方公司",
+                    seller: "乙方公司",
+                    amount: 100,
+                    taxRate: "6%",
+                    category: "增值税普通发票"
                   }
                 ]
               },
@@ -494,6 +625,7 @@ function fakeApprovalRunsClient(requests: string[] = []): KyInstance {
               taskMode: "assisted",
               sourceDocumentSN: "B26001965",
               sourceDocumentId: "doc-source-1",
+              ruleSetVersionNumber: 16,
               sourceExtendData: { _langfuseTraceId: "trace-1" },
               createdAt: 1780898164536
             },
@@ -527,33 +659,54 @@ function fakeApprovalRunsClient(requests: string[] = []): KyInstance {
 
 function fakeRulesClient(): KyInstance {
   return {
-    get: () => ({
+    get: (url: string) => ({
       json: async () => ({
-        data: {
-          hasPendingDeletes: false,
-          rules: [
-            {
-              id: "rule-1",
-              tenantId: "tenant-1",
-              description: "Must include full invoice detail",
-              scope: "travel",
-              strictness: "MUST_FOLLOW",
-              status: "active",
-              createdAt: 1780898164536,
-              updatedAt: 1780898164536
-            },
-            {
-              id: "rule-2",
-              tenantId: "tenant-1",
-              description: "Prefer matching attendee names",
-              scope: "meal",
-              strictness: "SHOULD_FOLLOW",
-              status: "draft",
-              createdAt: 1780898164537,
-              updatedAt: 1780898164537
+        data: url === "api/v1/rule-set-versions"
+          ? [
+              {
+                id: "version-16",
+                versionNumber: 16,
+                versionName: "v16",
+                publishedByName: "Tester",
+                rules: [
+                  {
+                    description: "First published rule",
+                    scope: "travel",
+                    strictness: "MUST_FOLLOW"
+                  },
+                  {
+                    description: "Second published rule",
+                    scope: "meal",
+                    strictness: "SHOULD_FOLLOW"
+                  }
+                ]
+              }
+            ]
+          : {
+              hasPendingDeletes: false,
+              rules: [
+                {
+                  id: "rule-1",
+                  tenantId: "tenant-1",
+                  description: "Must include full invoice detail",
+                  scope: "travel",
+                  strictness: "MUST_FOLLOW",
+                  status: "active",
+                  createdAt: 1780898164536,
+                  updatedAt: 1780898164536
+                },
+                {
+                  id: "rule-2",
+                  tenantId: "tenant-1",
+                  description: "Prefer matching attendee names",
+                  scope: "meal",
+                  strictness: "SHOULD_FOLLOW",
+                  status: "draft",
+                  createdAt: 1780898164537,
+                  updatedAt: 1780898164537
+                }
+              ]
             }
-          ]
-        }
       })
     })
   } as unknown as KyInstance;

@@ -108,9 +108,27 @@ paths:
         - $ref: ../components/parameters.yaml#/CorpId
         - name: query
           in: query
-          required: true
           schema:
             type: string
+        - name: sn
+          in: query
+          schema:
+            type: string
+          description: Source document number for direct lookup.
+        - name: batch
+          in: query
+          schema:
+            type: string
+          description: Optional simulation batch ID.
+        - name: latest
+          in: query
+          schema:
+            type: boolean
+        - name: fields
+          in: query
+          schema:
+            type: string
+          description: Comma-separated response fields.
         - name: limit
           in: query
           schema:
@@ -192,9 +210,89 @@ paths:
       tags: [Approval Runs]
       operationId: getApprovalRun
       summary: Get wrapped approval run detail
+      parameters:
+        - name: summary
+          in: query
+          schema:
+            type: boolean
+        - name: fields
+          in: query
+          schema:
+            type: string
+          description: Comma-separated field paths such as metadata,document.fields,result.summary.
       responses:
         "200":
           description: Approval run detail plus stable aliases and human result.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /v1/approval-runs/{recordId}/cited-rules:
+    parameters:
+      - $ref: ../components/parameters.yaml#/RecordId
+    get:
+      tags: [Approval Runs]
+      operationId: getApprovalRunCitedRules
+      summary: Extract rules cited or matched by the AI result
+      responses:
+        "200":
+          description: Cited rule summaries.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /v1/approval-runs/{recordId}/document-summary:
+    parameters:
+      - $ref: ../components/parameters.yaml#/RecordId
+    get:
+      tags: [Approval Runs]
+      operationId: getApprovalRunDocumentSummary
+      summary: Get key document fields and compact AI/manual result
+      responses:
+        "200":
+          description: Document summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /v1/approval-runs/{recordId}/attachments:
+    parameters:
+      - $ref: ../components/parameters.yaml#/RecordId
+    get:
+      tags: [Approval Runs]
+      operationId: getApprovalRunAttachments
+      summary: List compact attachment metadata
+      parameters:
+        - name: summary
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Attachment metadata.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /v1/approval-runs/{recordId}/result:
+    parameters:
+      - $ref: ../components/parameters.yaml#/RecordId
+    get:
+      tags: [Approval Runs]
+      operationId: getApprovalRunResult
+      summary: Get AI result, optionally as a compact summary
+      parameters:
+        - name: summary
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: AI result or summary.
           content:
             application/json:
               schema:

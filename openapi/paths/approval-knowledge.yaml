@@ -128,6 +128,48 @@ paths:
             application/json:
               schema:
                 $ref: ../components/schemas/index.yaml#/RuleSetVersion
+  /v1/approval/rules/by-version:
+    get:
+      tags: [Approval Knowledge]
+      operationId: getApprovalRuleByVersion
+      summary: Get one wrapped rule from a published version
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+        - name: versionNumber
+          in: query
+          schema:
+            type: integer
+        - name: versionId
+          in: query
+          schema:
+            type: string
+        - name: latest
+          in: query
+          schema:
+            type: boolean
+        - name: code
+          in: query
+          schema:
+            type: string
+          description: Display rule code such as '#0038'.
+        - name: runtimeId
+          in: query
+          schema:
+            type: string
+          description: Runtime rule ID such as rule-205.
+        - name: recordId
+          in: query
+          schema:
+            type: string
+          description: Infer versionNumber from an approval run.
+      responses:
+        "200":
+          description: One rule from a published version.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
   /v1/approval/rule-versions/publish:
     post:
       tags: [Approval Knowledge]

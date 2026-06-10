@@ -24,6 +24,8 @@
   $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1rule-versions
 /v1/approval/rule-versions/{versionId}:
   $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1rule-versions~1{versionId}
+/v1/approval/rules/by-version:
+  $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1rules~1by-version
 /v1/approval/rule-versions/publish:
   $ref: ./approval-knowledge.yaml#/paths/~1v1~1approval~1rule-versions~1publish
 /v1/approval/documents:
@@ -44,5 +46,13 @@
   $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1url
 /v1/approval-runs/{recordId}:
   $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1{recordId}
+/v1/approval-runs/{recordId}/cited-rules:
+  $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1{recordId}~1cited-rules
+/v1/approval-runs/{recordId}/document-summary:
+  $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1{recordId}~1document-summary
+/v1/approval-runs/{recordId}/attachments:
+  $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1{recordId}~1attachments
+/v1/approval-runs/{recordId}/result:
+  $ref: ./approval-runs.yaml#/paths/~1v1~1approval-runs~1{recordId}~1result
 /v1/simulation/batches/{batchId}/records:
   $ref: ./simulation.yaml#/paths/~1v1~1simulation~1batches~1{batchId}~1records

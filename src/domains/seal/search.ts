@@ -31,6 +31,9 @@ export type ApprovalSearchParams = {
   ruleVersionId?: string;
   ruleVersionNumber?: number;
   latestRuleVersion?: boolean;
+  snippetOnly?: boolean;
+  maxChars?: number;
+  fields?: string[];
 };
 
 export type ApprovalSearchResult = {
@@ -101,8 +104,13 @@ function searchEntry(
   entry: SearchEntry,
   params: Required<Pick<ApprovalSearchParams, "matchMode" | "caseSensitive" | "contextLines">> & {
     keywords: string[];
+    snippetOnly?: boolean;
+    maxChars?: number;
+    fields?: Set<string>;
   }
 ): ApprovalSearchResult[] {
+  if (params.fields && !params.fields.has(entry.field)) return [];
+
   const lines = linesOf(entry.value);
   const results: ApprovalSearchResult[] = [];
 
@@ -118,7 +126,7 @@ function searchEntry(
     const beforeStart = Math.max(0, index - params.contextLines);
     const afterEnd = Math.min(lines.length, index + params.contextLines + 1);
 
-    results.push({
+    const result: ApprovalSearchResult = {
       area: entry.area,
       entityType: entry.entityType,
       entityId: entry.entityId,
@@ -126,17 +134,32 @@ function searchEntry(
       field: entry.field,
       lineNumber: index + 1,
       matchedKeywords: matches,
-      matchedText: line,
+      matchedText: truncateText(line, params.maxChars),
       context: {
-        before: lines.slice(beforeStart, index),
-        line,
-        after: lines.slice(index + 1, afterEnd)
+        before: params.snippetOnly ? [] : lines.slice(beforeStart, index).map((item) => truncateText(item, params.maxChars)),
+        line: truncateText(line, params.maxChars),
+        after: params.snippetOnly ? [] : lines.slice(index + 1, afterEnd).map((item) => truncateText(item, params.maxChars))
       },
       metadata: entry.metadata
-    });
+    };
+
+    if (params.snippetOnly) {
+      result.context = {
+        before: [],
+        line: result.context.line,
+        after: []
+      };
+    }
+
+    results.push(result);
   });
 
   return results;
+}
+
+function truncateText(value: string, maxChars?: number): string {
+  if (!maxChars || value.length <= maxChars) return value;
+  return `${value.slice(0, Math.max(0, maxChars))}...`;
 }
 
 function ruleEntries(rule: ApprovalRule): SearchEntry[] {
@@ -390,6 +413,7 @@ export async function searchApprovalContent(
   const maxResults = params.maxResults ?? 50;
   const ruleVersionScope = params.ruleVersionScope ?? "current";
   const keywords = normalizeKeywords(params.keywords, caseSensitive);
+  const fields = params.fields?.length ? new Set(params.fields) : undefined;
 
   if (keywords.length === 0) {
     throw new Error("keywords must contain at least one non-empty string");
@@ -407,7 +431,15 @@ export async function searchApprovalContent(
   const results = cached.entries
     .filter((entry) => areas.has(entry.area))
     .flatMap((entry) =>
-      searchEntry(entry, { keywords, matchMode, caseSensitive, contextLines })
+      searchEntry(entry, {
+        keywords,
+        matchMode,
+        caseSensitive,
+        contextLines,
+        snippetOnly: params.snippetOnly,
+        maxChars: params.maxChars,
+        fields
+      })
     );
 
   return {
@@ -421,7 +453,10 @@ export async function searchApprovalContent(
       ruleVersionScope,
       ruleVersionId: params.ruleVersionId,
       ruleVersionNumber: params.ruleVersionNumber,
-      latestRuleVersion: params.latestRuleVersion ?? false
+      latestRuleVersion: params.latestRuleVersion ?? false,
+      snippetOnly: params.snippetOnly ?? false,
+      maxChars: params.maxChars,
+      fields: params.fields
     },
     cache: {
       fetchedAt: new Date(cached.fetchedAt).toISOString(),
