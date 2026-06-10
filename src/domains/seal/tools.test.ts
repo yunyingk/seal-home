@@ -255,6 +255,81 @@ describe("sealTools", () => {
     });
   });
 
+  test("approval run get can return selected fields only", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_get");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { recordId: "run-1", fields: "metadata,document.fields,result.summary" },
+      fakeContext()
+    ) as {
+      metadata?: { recordId?: string };
+      document?: { fields?: unknown[] };
+      result?: { summary?: string; manualApproval?: unknown };
+      pipelineData?: unknown;
+    };
+
+    expect(result.metadata?.recordId).toBe("run-1");
+    expect(result.document?.fields).toHaveLength(1);
+    expect(result.result?.summary).toBe("费用存在风险");
+    expect(result.result?.manualApproval).toBeUndefined();
+    expect(result.pipelineData).toBeUndefined();
+  });
+
+  test("approval run attachments extracts compact attachment metadata", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_attachments_get");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { recordId: "run-1" },
+      fakeContext()
+    ) as { count: number; attachments: Array<Record<string, unknown>> };
+
+    expect(result.count).toBe(2);
+    expect(result.attachments).toContainEqual(expect.objectContaining({
+      kind: "attachment",
+      fileName: "receipt.pdf",
+      fileId: "file-1",
+      mimeType: "application/pdf",
+      ossPath: "oss://bucket/receipt.pdf"
+    }));
+    expect(result.attachments).toContainEqual(expect.objectContaining({
+      kind: "invoice",
+      fileName: "invoice.png",
+      url: "https://signed.example/invoice.png"
+    }));
+  });
+
+  test("approval run result can return summary only", async () => {
+    const tool = sealTools.find((item) => item.name === "seal_approval_run_result_get");
+    expect(tool).toBeDefined();
+
+    const handler = tool!.handler as ToolHandler;
+    const result = await handler(
+      fakeApprovalRunsClient(),
+      { recordId: "run-1", summary: true },
+      fakeContext()
+    ) as {
+      decision?: string;
+      summary?: string;
+      riskPointCount?: number;
+      matchedRuleCount?: number;
+      traceId?: string;
+    };
+
+    expect(result).toMatchObject({
+      decision: "驳回",
+      summary: "费用存在风险",
+      riskPointCount: 2,
+      matchedRuleCount: 1,
+      traceId: "trace-1"
+    });
+  });
+
   test("approval run url returns Hose enterprise and document links by recordId", async () => {
     const tool = sealTools.find((item) => item.name === "seal_approval_run_url_get");
     expect(tool).toBeDefined();
@@ -371,12 +446,34 @@ function fakeApprovalRunsClient(requests: string[] = []): KyInstance {
                 id: "normalized-doc-1",
                 sourceDocumentSN: "B26001965",
                 sourceDocumentId: "doc-source-1",
-                fields: []
+                fields: [
+                  {
+                    label: "附件",
+                    attachments: [
+                      {
+                        fileName: "receipt.pdf",
+                        fileId: "file-1",
+                        mimeType: "application/pdf",
+                        ossPath: "oss://bucket/receipt.pdf"
+                      }
+                    ]
+                  }
+                ]
               },
               result: {
+                summary: "费用存在风险",
+                riskPoints: ["金额异常", "附件缺失"],
+                matchedRules: [{ id: "rule-1" }],
                 manualApproval: {
                   result: "驳回"
-                }
+                },
+                invoices: [
+                  {
+                    fileName: "invoice.png",
+                    mimeType: "image/png",
+                    signedUrl: "https://signed.example/invoice.png"
+                  }
+                ]
               },
               pipelineData: {
                 logs: "audit logs"

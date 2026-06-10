@@ -38,9 +38,11 @@ Use `seal-home update` after pulling new versions; it restarts the service if it
 - For current identity or tenant: use `seal-home tool seal_whoami`.
 - For configured enterprises: use `seal-home corps list`.
 - For Hose login, SSO, or "Unable to connect" authentication failures: use `seal-home auth diagnose [--corp <corpId>]`.
+- For an unredacted Hose provisional auth link: use `seal-home auth hose-link --corp <corpId> --expire 7200`.
 - For source-derived enterprise config: use `seal-home source config`.
 - For daily approval run questions: use `seal-home approval-runs summary --date YYYY-MM-DD --timezone Asia/Shanghai`.
 - For approval run lookup by document SN, ID, status, mode, or trace: use `seal-home approval-runs search`.
+- For compact approval run detail: use `seal-home approval-runs get <recordId> --fields metadata`, `seal-home approval-runs attachments <recordId>`, or `seal-home approval-runs result <recordId> --summary`.
 - For Hose enterprise assist links: use `seal-home approval-runs url`; add `<recordId>` or `--sourceDocumentSN B26001887` when a document link is also needed.
 - For Langfuse lookup hints: use `seal-home approval-runs bridge`.
 - For one simulation batch: use `seal-home simulation batch-records <batchId>`.
@@ -171,6 +173,9 @@ Preferred command forms:
 ```bash
 seal-home approval-runs summary --date 2026-06-09 --timezone Asia/Shanghai
 seal-home approval-runs search --query B26001887 --limit 20 --includeBridge true
+seal-home approval-runs get <recordId> --fields metadata,document.fields,result.summary
+seal-home approval-runs attachments <recordId>
+seal-home approval-runs result <recordId> --summary
 seal-home approval-runs url
 seal-home approval-runs url --sourceDocumentSN B26001887
 seal-home approval-runs bridge --sourceDocumentSN B26001887

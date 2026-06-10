@@ -128,7 +128,8 @@ async function ensureHoseOpenapiToken(corp: CorpConfig): Promise<string> {
 
 async function fetchHoseCloseApiToken(
   source: HoseSealSource,
-  openapiToken: string
+  openapiToken: string,
+  expiresIn = 7200
 ): Promise<TokenEntry> {
   const client = hoseClient(source);
   const uid = hoseUid(source);
@@ -141,7 +142,7 @@ async function fetchHoseCloseApiToken(
       json: {
         uid,
         pageType: "home",
-        expireDate: 7200
+        expireDate: expiresIn
       }
     })
     .json<HoseProvisionalResponse>();
@@ -159,7 +160,7 @@ async function fetchHoseCloseApiToken(
   return {
     token: closeapiToken,
     url,
-    expiresAt: Date.now() + 7200 * 1000
+    expiresAt: Date.now() + expiresIn * 1000
   };
 }
 
@@ -192,6 +193,33 @@ export async function getHoseEnterpriseUrl(corp: CorpConfig): Promise<string> {
     throw new Error("Hose provisional auth URL was not available");
   }
   return url;
+}
+
+export async function getHoseProvisionalAuthLink(
+  corp: CorpConfig,
+  expiresIn = 7200
+): Promise<{
+  corpId: string;
+  staffId: string;
+  url: string;
+  expiresIn: number;
+}> {
+  if (corp.source.type !== "hose") {
+    throw new Error(`Unsupported Seal source: ${corp.source.type}`);
+  }
+
+  const openapiToken = await ensureHoseOpenapiToken(corp);
+  const provisional = await fetchHoseCloseApiToken(corp.source, openapiToken, expiresIn);
+  if (!provisional.url) {
+    throw new Error("Hose provisional auth URL was not available");
+  }
+
+  return {
+    corpId: corp.source.corpId,
+    staffId: corp.source.staffId,
+    url: provisional.url,
+    expiresIn
+  };
 }
 
 export async function getHoseSealSession(corp: CorpConfig): Promise<SealSession> {

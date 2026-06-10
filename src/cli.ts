@@ -12,6 +12,7 @@ import { getMe } from "./domains/seal/api.js";
 import { sealTools, type SealTool } from "./domains/seal/tools.js";
 import { CorpConfig } from "./core/config/types.js";
 import { clearCorpTokenCache } from "./core/auth/token-store.js";
+import { getHoseProvisionalAuthLink } from "./core/auth/hose.js";
 
 const VERSION = "0.3.0";
 const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -22,11 +23,17 @@ const CURRENT_CORP_FILE = join(STATE_DIR, "current-corp");
 const RULE_LIST_FULL_COUNT_LIMIT = 100;
 const RULE_LIST_FULL_BYTES_LIMIT = 120_000;
 const RULE_SUMMARY_FIELDS = ["id", "status", "strictness", "scope", "createdAt", "updatedAt"];
+const DEFAULT_OUTPUT_BYTES_LIMIT = 200_000;
 
 type ParsedArgs = {
   command: string[];
   options: Record<string, string | boolean>;
   json?: unknown;
+};
+
+type OutputOptions = {
+  allowFull?: boolean;
+  outputFile?: string;
 };
 
 async function main() {
@@ -122,24 +129,30 @@ async function main() {
     return;
   }
 
+  if (area === "auth" && action === "hose-link") {
+    const expiresIn = numberOption(args.options.expire) ?? 7200;
+    printJson(await getHoseProvisionalAuthLink(corp, expiresIn));
+    return;
+  }
+
   const client = await createSealClient(corp);
 
   if (area === "context") {
     await runTool("seal_approval_context_get", client, corp, {
       documentLimit: numberOption(args.options.documentLimit),
       ...ruleVersionContextOptions(stringOption(args.options.ruleVersion))
-    });
+    }, outputOptions(args.options));
     return;
   }
 
   if (area === "rules" && action === "count") {
-    await runTool("seal_approval_rules_list", client, corp, { countOnly: true });
+    await runTool("seal_approval_rules_list", client, corp, { countOnly: true }, outputOptions(args.options));
     return;
   }
 
   if (area === "rules" && action === "list") {
     if (booleanOption(args.options.count)) {
-      await runTool("seal_approval_rules_list", client, corp, { countOnly: true });
+      await runTool("seal_approval_rules_list", client, corp, { countOnly: true }, outputOptions(args.options));
       return;
     }
 
@@ -150,7 +163,7 @@ async function main() {
         fields: RULE_SUMMARY_FIELDS,
         limit,
         offset
-      });
+      }, outputOptions(args.options));
       return;
     }
 
@@ -161,14 +174,14 @@ async function main() {
   }
 
   if (area === "rules" && action === "versions") {
-    await runTool("seal_approval_rule_versions_list", client, corp, {});
+    await runTool("seal_approval_rule_versions_list", client, corp, {}, outputOptions(args.options));
     return;
   }
 
   if (area === "rules" && action === "version") {
     const version = maybeName ?? stringOption(args.options.version);
     if (!version) throw new Error("Usage: seal-home rules version <versionId|versionNumber|latest>");
-    await runTool("seal_approval_rule_version_get", client, corp, parseRuleVersionSelector(version));
+    await runTool("seal_approval_rule_version_get", client, corp, parseRuleVersionSelector(version), outputOptions(args.options));
     return;
   }
 
@@ -182,13 +195,13 @@ async function main() {
       contextLines: numberOption(args.options.contextLines),
       refresh: booleanOption(args.options.refresh),
       ...ruleVersionSearchOptions(stringOption(args.options.version))
-    });
+    }, outputOptions(args.options));
     return;
   }
 
   if (area === "tool") {
     if (!action) throw new Error("Usage: seal-home tool <toolName> [--json '{...}']");
-    await runTool(action, client, corp, jsonObject(args.json));
+    await runTool(action, client, corp, jsonObject(args.json), outputOptions(args.options));
     return;
   }
 
@@ -206,7 +219,7 @@ async function main() {
       sourceDocumentId: stringOption(args.options.sourceDocumentId),
       humanResult: stringOption(args.options.humanResult),
       query: stringOption(args.options.query)
-    });
+    }, outputOptions(args.options));
     return;
   }
 
@@ -224,7 +237,7 @@ async function main() {
       humanResult: stringOption(args.options.humanResult),
       query: stringOption(args.options.query),
       includeBridge: booleanOption(args.options.includeBridge)
-    });
+    }, outputOptions(args.options));
     return;
   }
 
@@ -235,7 +248,7 @@ async function main() {
       sourceDocumentId: stringOption(args.options.sourceDocumentId),
       simulationBatchId: stringOption(args.options.simulationBatchId),
       limit: numberOption(args.options.limit)
-    });
+    }, outputOptions(args.options));
     return;
   }
 
@@ -246,14 +259,34 @@ async function main() {
       query,
       limit: numberOption(args.options.limit),
       includeBridge: booleanOption(args.options.includeBridge)
-    });
+    }, outputOptions(args.options));
     return;
   }
 
   if (area === "approval-runs" && action === "get") {
     const recordId = args.command[2];
     if (!recordId) throw new Error("Missing approval run recordId");
-    await runTool("seal_approval_run_get", client, corp, { recordId });
+    await runTool("seal_approval_run_get", client, corp, {
+      recordId,
+      fields: stringOption(args.options.fields)
+    }, outputOptions(args.options));
+    return;
+  }
+
+  if (area === "approval-runs" && action === "attachments") {
+    const recordId = args.command[2];
+    if (!recordId) throw new Error("Usage: seal-home approval-runs attachments <recordId>");
+    await runTool("seal_approval_run_attachments_get", client, corp, { recordId }, outputOptions(args.options));
+    return;
+  }
+
+  if (area === "approval-runs" && action === "result") {
+    const recordId = args.command[2];
+    if (!recordId) throw new Error("Usage: seal-home approval-runs result <recordId> [--summary]");
+    await runTool("seal_approval_run_result_get", client, corp, {
+      recordId,
+      summary: booleanOption(args.options.summary)
+    }, outputOptions(args.options));
     return;
   }
 
@@ -262,7 +295,7 @@ async function main() {
       recordId: maybeName,
       sourceDocumentSN: stringOption(args.options.sourceDocumentSN),
       sourceDocumentId: stringOption(args.options.sourceDocumentId)
-    });
+    }, outputOptions(args.options));
     return;
   }
 
@@ -272,7 +305,7 @@ async function main() {
     await runTool("seal_simulation_batch_records_get", client, corp, {
       batchId,
       query: stringOption(args.options.query)
-    });
+    }, outputOptions(args.options));
     return;
   }
 
@@ -417,9 +450,10 @@ async function runTool(
   name: string,
   client: Awaited<ReturnType<typeof createSealClient>>,
   corp: CorpConfig,
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
+  options: OutputOptions = {}
 ) {
-  printJson(await runToolResult(name, client, corp, params));
+  printJson(await runToolResult(name, client, corp, params), options);
 }
 
 async function runToolResult(
@@ -455,6 +489,23 @@ function protectLargeRuleListOutput(result: unknown, allowFull: boolean) {
       `Rule list is large (${effectiveCount} rules, ${bodyBytes} bytes). Use "seal-home rules list --summary" or "seal-home rules count"; pass --full only when you really need full descriptions.`
     );
   }
+}
+
+function protectLargeOutput(result: unknown, options: OutputOptions = {}) {
+  if (options.allowFull || options.outputFile) return;
+  const bodyBytes = Buffer.byteLength(JSON.stringify(result), "utf-8");
+  if (bodyBytes > DEFAULT_OUTPUT_BYTES_LIMIT) {
+    throw new Error(
+      `Output is large (${bodyBytes} bytes). Use --summary, --fields, --count, or --output-file; pass --full only when you really need the full response.`
+    );
+  }
+}
+
+function outputOptions(options: Record<string, string | boolean>): OutputOptions {
+  return {
+    allowFull: booleanOption(options.full) === true,
+    outputFile: stringOption(options.outputFile) ?? stringOption(options["output-file"])
+  };
 }
 
 function selectCorp(corpId: string): CorpConfig {
@@ -996,8 +1047,15 @@ function appendLog(message: string) {
   writeFileSync(SERVICE_LOG_FILE, `${new Date().toISOString()} ${message}\n`, { flag: "a" });
 }
 
-function printJson(value: unknown) {
-  console.log(JSON.stringify(value, null, 2));
+function printJson(value: unknown, options: OutputOptions = {}) {
+  protectLargeOutput(value, options);
+  const json = `${JSON.stringify(value, null, 2)}\n`;
+  if (options.outputFile) {
+    writeFileSync(options.outputFile, json);
+    console.log(JSON.stringify({ outputFile: options.outputFile, bytes: Buffer.byteLength(json, "utf-8") }, null, 2));
+    return;
+  }
+  console.log(json.trimEnd());
 }
 
 function printHelp() {
@@ -1014,6 +1072,7 @@ Usage:
   seal-home corps switch <corpId>
   seal-home corps add-hose --json '{"name":"企业名称","domain":"https://app.ekuaibao.com","appKey":"...","appSecurity":"...","proxyStaffBizId":"corpId:staffId"}'
   seal-home auth diagnose [--corp <corpId>]
+  seal-home auth hose-link [--corp <corpId>] [--expire 7200]
   seal-home source config [--corp <corpId>]
   seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
   seal-home rules count [--corp <corpId>]
@@ -1025,7 +1084,9 @@ Usage:
   seal-home approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
   seal-home approval-runs search [--query text] [--humanResult 驳回] [--manualApprovalStatus TERMINATED] [--startDate ms] [--endDate ms] [--limit 20] [--includeBridge true]
   seal-home approval-runs pick <documentSN-or-query> [--limit 20]
-  seal-home approval-runs get <recordId>
+  seal-home approval-runs get <recordId> [--fields metadata|document.fields,result.summary] [--full] [--output-file file.json]
+  seal-home approval-runs attachments <recordId>
+  seal-home approval-runs result <recordId> [--summary]
   seal-home approval-runs url
   seal-home approval-runs url <recordId>
   seal-home approval-runs url --sourceDocumentSN B26022501
