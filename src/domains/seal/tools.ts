@@ -4,7 +4,7 @@ import * as api from "./api.js";
 import { getHoseEnterpriseUrl } from "../../core/auth/hose.js";
 import { CorpConfig } from "../../core/config/types.js";
 import { searchApprovalContent } from "./search.js";
-import type { ApprovalRun, RuleSetVersion } from "./types.js";
+import type { ApprovalRule, ApprovalRun, RuleSetVersion } from "./types.js";
 
 type ToolContext = {
   corp: CorpConfig;
@@ -32,9 +32,34 @@ export const sealTools = [
   },
   {
     name: "seal_approval_rules_list",
-    description: "列出 Seal 当前草稿审批规则",
-    parameters: z.object({}),
-    handler: async (client: KyInstance) => api.listApprovalRules(client)
+    description: "列出 Seal 当前草稿审批规则；支持 countOnly、fields、limit 以避免返回规则正文",
+    parameters: z.object({
+      countOnly: z.boolean().optional().describe("只返回规则数量，不返回规则列表"),
+      fields: z.array(z.enum([
+        "id",
+        "tenantId",
+        "status",
+        "strictness",
+        "scope",
+        "createdAt",
+        "updatedAt",
+        "description"
+      ])).optional().describe("只返回指定字段；不传则返回完整规则"),
+      limit: z.number().int().nonnegative().optional().describe("最多返回多少条规则；0 可配合 fields 或 countOnly 只取数量"),
+      offset: z.number().int().nonnegative().optional().describe("跳过前多少条规则")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: {
+        countOnly?: boolean;
+        fields?: RuleField[];
+        limit?: number;
+        offset?: number;
+      }
+    ) => {
+      const data = await api.listApprovalRules(client);
+      return projectApprovalRules(data, params);
+    }
   },
   {
     name: "seal_approval_rule_create",
@@ -784,6 +809,43 @@ type ApprovalRunsSummaryOptions = {
   fetched: number;
   total?: number;
 };
+
+type RuleField = keyof ApprovalRule;
+
+function projectApprovalRules(
+  data: { rules: ApprovalRule[]; hasPendingDeletes: boolean },
+  params: {
+    countOnly?: boolean;
+    fields?: RuleField[];
+    limit?: number;
+    offset?: number;
+  }
+) {
+  const count = data.rules.length;
+  if (params.countOnly || params.limit === 0) {
+    return { count };
+  }
+
+  const offset = params.offset ?? 0;
+  const rules = data.rules.slice(offset, params.limit === undefined ? undefined : offset + params.limit);
+  const fields = params.fields;
+
+  return {
+    count,
+    hasPendingDeletes: data.hasPendingDeletes,
+    rules: fields ? rules.map((rule) => pickRuleFields(rule, fields)) : rules
+  };
+}
+
+function pickRuleFields(rule: ApprovalRule, fields: readonly RuleField[]) {
+  const output: Partial<ApprovalRule> = {};
+  for (const field of fields) {
+    if (rule[field] !== undefined) {
+      output[field] = rule[field] as never;
+    }
+  }
+  return output;
+}
 
 function summarizeApprovalRun(record: ApprovalRun): ApprovalRunSummary {
   const sourceDocumentSN = record.sourceDocumentSN;

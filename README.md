@@ -183,7 +183,7 @@ These tools remain available to the CLI:
 - `seal_source_config`: resolve current Seal enterprise config from the configured source.
 - `seal_approval_runs_search`: search approval run history and optional bridge rows.
 - `seal_session_get`: current Seal Bearer session and expiration.
-- `seal_approval_rules_list`: current draft approval rules.
+- `seal_approval_rules_list`: current draft approval rules. Use `{"countOnly":true}` or `{"fields":["id"],"limit":0}` to return only `{"count":...}`; use `fields` for lightweight projections when rule descriptions are not needed.
 - `seal_approval_rule_create`, `seal_approval_rule_update`, `seal_approval_rule_delete`: maintain approval rules.
 - `seal_approval_rule_versions_list`, `seal_approval_rule_version_publish`: read and publish rule versions.
 - `seal_approval_documents_list`, `seal_approval_document_get`, `seal_approval_document_create`, `seal_approval_document_update`: maintain approval documents.
@@ -192,6 +192,8 @@ These tools remain available to the CLI:
 - `seal_approval_run_url_get`: return the Hose enterprise assist URL, optionally with the original document URL for an approval run by `recordId`, `sourceDocumentSN`, or `sourceDocumentId`.
 - `seal_simulation_batch_records_get`: read records from one simulation batch via `api/v1/simulation/batch/{batchId}/records`.
 - `seal_approval_run_langfuse_bridge_get`: resolve approval run records to Langfuse lookup hints. It prefers `sourceExtendData._langfuseTraceId`; if that is missing, it returns `hosecloud-{sourceDocumentSN}` as the session fallback.
+
+For rule list commands, prefer `seal-home rules count` or `seal-home rules list --summary` before requesting full rule descriptions. `seal-home rules list` protects large outputs and asks for `--summary`, `--count`, or explicit `--full` when the response would be too large.
 
 ## Approval Run To Langfuse Bridge
 

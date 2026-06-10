@@ -19,6 +19,9 @@ const STATE_DIR = join(homedir(), ".config", "seal-home");
 const SERVICE_PID_FILE = join(STATE_DIR, "service.pid");
 const SERVICE_LOG_FILE = join(STATE_DIR, "service.log");
 const CURRENT_CORP_FILE = join(STATE_DIR, "current-corp");
+const RULE_LIST_FULL_COUNT_LIMIT = 100;
+const RULE_LIST_FULL_BYTES_LIMIT = 120_000;
+const RULE_SUMMARY_FIELDS = ["id", "status", "strictness", "scope", "createdAt", "updatedAt"];
 
 type ParsedArgs = {
   command: string[];
@@ -126,6 +129,34 @@ async function main() {
       documentLimit: numberOption(args.options.documentLimit),
       ...ruleVersionContextOptions(stringOption(args.options.ruleVersion))
     });
+    return;
+  }
+
+  if (area === "rules" && action === "count") {
+    await runTool("seal_approval_rules_list", client, corp, { countOnly: true });
+    return;
+  }
+
+  if (area === "rules" && action === "list") {
+    if (booleanOption(args.options.count)) {
+      await runTool("seal_approval_rules_list", client, corp, { countOnly: true });
+      return;
+    }
+
+    const limit = numberOption(args.options.limit);
+    const offset = numberOption(args.options.offset);
+    if (booleanOption(args.options.summary)) {
+      await runTool("seal_approval_rules_list", client, corp, {
+        fields: RULE_SUMMARY_FIELDS,
+        limit,
+        offset
+      });
+      return;
+    }
+
+    const result = await runToolResult("seal_approval_rules_list", client, corp, { limit, offset });
+    protectLargeRuleListOutput(result, booleanOption(args.options.full) === true);
+    printJson(result);
     return;
   }
 
@@ -388,6 +419,15 @@ async function runTool(
   corp: CorpConfig,
   params: Record<string, unknown>
 ) {
+  printJson(await runToolResult(name, client, corp, params));
+}
+
+async function runToolResult(
+  name: string,
+  client: Awaited<ReturnType<typeof createSealClient>>,
+  corp: CorpConfig,
+  params: Record<string, unknown>
+) {
   const tool = sealTools.find((item) => item.name === name);
   if (!tool) throw new Error(`Unknown Seal tool: ${name}`);
 
@@ -395,8 +435,26 @@ async function runTool(
     Object.entries(params).filter(([, value]) => value !== undefined)
   );
   const handler = tool.handler as SealTool["handler"];
-  const result = await handler(client, compactParams as never, { corp });
-  printJson(result);
+  return handler(client, compactParams as never, { corp });
+}
+
+function protectLargeRuleListOutput(result: unknown, allowFull: boolean) {
+  if (allowFull) return;
+
+  const data = result && typeof result === "object" ? result as {
+    count?: unknown;
+    rules?: unknown;
+  } : {};
+  const count = typeof data.count === "number" ? data.count : undefined;
+  const rulesCount = Array.isArray(data.rules) ? data.rules.length : undefined;
+  const bodyBytes = Buffer.byteLength(JSON.stringify(result), "utf-8");
+  const effectiveCount = count ?? rulesCount ?? 0;
+
+  if (effectiveCount > RULE_LIST_FULL_COUNT_LIMIT || bodyBytes > RULE_LIST_FULL_BYTES_LIMIT) {
+    throw new Error(
+      `Rule list is large (${effectiveCount} rules, ${bodyBytes} bytes). Use "seal-home rules list --summary" or "seal-home rules count"; pass --full only when you really need full descriptions.`
+    );
+  }
 }
 
 function selectCorp(corpId: string): CorpConfig {
@@ -958,6 +1016,8 @@ Usage:
   seal-home auth diagnose [--corp <corpId>]
   seal-home source config [--corp <corpId>]
   seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
+  seal-home rules count [--corp <corpId>]
+  seal-home rules list [--summary] [--count] [--limit 20] [--offset 0] [--corp <corpId>]
   seal-home rules versions [--corp <corpId>]
   seal-home rules version <versionId|versionNumber|latest> [--corp <corpId>]
   seal-home rules search <keyword> [--version <versionId|versionNumber|latest>] [--maxResults 20]

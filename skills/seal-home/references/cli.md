@@ -59,6 +59,8 @@ Identity and session:
 
 Approval rule maintenance:
 
+- `seal-home rules count [--corp <corpId>]`
+- `seal-home rules list --summary [--corp <corpId>]`
 - `seal_approval_rules_list`
 - `seal_approval_rule_create`
 - `seal_approval_rule_update`
