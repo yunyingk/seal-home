@@ -35,8 +35,8 @@ seal-home approval-runs attachments <recordId>
 seal-home approval-runs result <recordId> [--summary]
 seal-home approval-runs url
 seal-home approval-runs url <recordId>
-seal-home approval-runs url --sourceDocumentSN B26001887
-seal-home approval-runs bridge [--sourceDocumentSN B26001887]
+seal-home approval-runs url --sourceDocumentSN <sourceDocumentSN>
+seal-home approval-runs bridge [--sourceDocumentSN <sourceDocumentSN>]
 seal-home simulation batch-records <batchId>
 ```
 
@@ -171,13 +171,13 @@ seal-home approval-runs summary --date 2026-06-09 --timezone Asia/Shanghai --lim
 Find a run and include Langfuse bridge rows:
 
 ```bash
-seal-home approval-runs search --query B26001887 --limit 20 --includeBridge true
+seal-home approval-runs search --query <sourceDocumentSN> --limit 20 --includeBridge true
 ```
 
 Resolve Langfuse trace/session hints:
 
 ```bash
-seal-home approval-runs bridge --sourceDocumentSN B26001887
+seal-home approval-runs bridge --sourceDocumentSN <sourceDocumentSN>
 ```
 
 Read simulation batch records:
