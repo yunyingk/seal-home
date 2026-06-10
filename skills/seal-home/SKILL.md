@@ -172,10 +172,13 @@ Preferred command forms:
 
 ```bash
 seal-home approval-runs summary --date 2026-06-09 --timezone Asia/Shanghai
-seal-home approval-runs search --query B26001887 --limit 20 --includeBridge true
-seal-home approval-runs get <recordId> --fields metadata,document.fields,result.summary
-seal-home approval-runs attachments <recordId>
+seal-home approval-runs pick --sn B26001887 --latest
+seal-home approval-runs get <recordId> --summary
+seal-home approval-runs document-summary <recordId>
+seal-home approval-runs cited-rules <recordId>
+seal-home approval-runs attachments <recordId> --summary
 seal-home approval-runs result <recordId> --summary
+seal-home rules get --version 16 --code '#0038'
 seal-home approval-runs url
 seal-home approval-runs url --sourceDocumentSN B26001887
 seal-home approval-runs bridge --sourceDocumentSN B26001887

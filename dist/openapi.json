@@ -900,6 +900,83 @@
         }
       }
     },
+    "/v1/approval/rules/by-version": {
+      "get": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "getApprovalRuleByVersion",
+        "summary": "Get one wrapped rule from a published version",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          },
+          {
+            "name": "versionNumber",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "versionId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "latest",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Display rule code such as '#0038'."
+          },
+          {
+            "name": "runtimeId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Runtime rule ID such as rule-205."
+          },
+          {
+            "name": "recordId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Infer versionNumber from an approval run."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One rule from a published version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/approval/rule-versions/publish": {
       "post": {
         "tags": [
@@ -1707,10 +1784,40 @@
           {
             "name": "query",
             "in": "query",
-            "required": true,
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "sn",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Source document number for direct lookup."
+          },
+          {
+            "name": "batch",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional simulation batch ID."
+          },
+          {
+            "name": "latest",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated response fields."
           },
           {
             "name": "limit",
@@ -1910,9 +2017,176 @@
         ],
         "operationId": "getApprovalRun",
         "summary": "Get wrapped approval run detail",
+        "parameters": [
+          {
+            "name": "summary",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated field paths such as metadata,document.fields,result.summary."
+          }
+        ],
         "responses": {
           "200": {
             "description": "Approval run detail plus stable aliases and human result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval-runs/{recordId}/cited-rules": {
+      "parameters": [
+        {
+          "name": "recordId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "seal-home approval run record ID."
+        }
+      ],
+      "get": {
+        "tags": [
+          "Approval Runs"
+        ],
+        "operationId": "getApprovalRunCitedRules",
+        "summary": "Extract rules cited or matched by the AI result",
+        "responses": {
+          "200": {
+            "description": "Cited rule summaries.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval-runs/{recordId}/document-summary": {
+      "parameters": [
+        {
+          "name": "recordId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "seal-home approval run record ID."
+        }
+      ],
+      "get": {
+        "tags": [
+          "Approval Runs"
+        ],
+        "operationId": "getApprovalRunDocumentSummary",
+        "summary": "Get key document fields and compact AI/manual result",
+        "responses": {
+          "200": {
+            "description": "Document summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval-runs/{recordId}/attachments": {
+      "parameters": [
+        {
+          "name": "recordId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "seal-home approval run record ID."
+        }
+      ],
+      "get": {
+        "tags": [
+          "Approval Runs"
+        ],
+        "operationId": "getApprovalRunAttachments",
+        "summary": "List compact attachment metadata",
+        "parameters": [
+          {
+            "name": "summary",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attachment metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval-runs/{recordId}/result": {
+      "parameters": [
+        {
+          "name": "recordId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "seal-home approval run record ID."
+        }
+      ],
+      "get": {
+        "tags": [
+          "Approval Runs"
+        ],
+        "operationId": "getApprovalRunResult",
+        "summary": "Get AI result, optionally as a compact summary",
+        "parameters": [
+          {
+            "name": "summary",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AI result or summary.",
             "content": {
               "application/json": {
                 "schema": {

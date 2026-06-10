@@ -185,6 +185,16 @@ async function main() {
     return;
   }
 
+  if (area === "rules" && action === "get") {
+    await runTool("seal_approval_rule_get", client, corp, {
+      ...ruleVersionGetOptions(stringOption(args.options.version)),
+      code: stringOption(args.options.code),
+      runtimeId: stringOption(args.options.runtimeId) ?? stringOption(args.options["runtime-id"]),
+      recordId: stringOption(args.options.recordId) ?? stringOption(args.options["record-id"])
+    }, outputOptions(args.options));
+    return;
+  }
+
   if (area === "rules" && action === "search") {
     const keyword = maybeName ?? stringOption(args.options.query);
     if (!keyword) throw new Error("Usage: seal-home rules search <keyword> [--version <versionId|versionNumber|latest>]");
@@ -194,6 +204,9 @@ async function main() {
       maxResults: numberOption(args.options.maxResults),
       contextLines: numberOption(args.options.contextLines),
       refresh: booleanOption(args.options.refresh),
+      snippetOnly: booleanOption(args.options.snippetOnly) ?? booleanOption(args.options["snippet-only"]),
+      maxChars: numberOption(args.options.maxChars) ?? numberOption(args.options["max-chars"]),
+      fields: splitOption(args.options.fields),
       ...ruleVersionSearchOptions(stringOption(args.options.version))
     }, outputOptions(args.options));
     return;
@@ -253,10 +266,14 @@ async function main() {
   }
 
   if (area === "approval-runs" && action === "pick") {
-    const query = maybeName ?? stringOption(args.options.query);
-    if (!query) throw new Error("Usage: seal-home approval-runs pick <documentSN-or-query>");
+    const query = maybeName ?? stringOption(args.options.query) ?? stringOption(args.options.sn);
+    if (!query) throw new Error("Usage: seal-home approval-runs pick --sn <documentSN>");
     await runTool("seal_approval_run_pick", client, corp, {
       query,
+      sn: stringOption(args.options.sn),
+      batchId: stringOption(args.options.batch) ?? stringOption(args.options.batchId),
+      latest: booleanOption(args.options.latest),
+      fields: stringOption(args.options.fields),
       limit: numberOption(args.options.limit),
       includeBridge: booleanOption(args.options.includeBridge)
     }, outputOptions(args.options));
@@ -268,15 +285,33 @@ async function main() {
     if (!recordId) throw new Error("Missing approval run recordId");
     await runTool("seal_approval_run_get", client, corp, {
       recordId,
-      fields: stringOption(args.options.fields)
+      fields: stringOption(args.options.fields),
+      summary: booleanOption(args.options.summary)
     }, outputOptions(args.options));
+    return;
+  }
+
+  if (area === "approval-runs" && action === "cited-rules") {
+    const recordId = args.command[2];
+    if (!recordId) throw new Error("Usage: seal-home approval-runs cited-rules <recordId>");
+    await runTool("seal_approval_run_cited_rules_get", client, corp, { recordId }, outputOptions(args.options));
+    return;
+  }
+
+  if (area === "approval-runs" && action === "document-summary") {
+    const recordId = args.command[2];
+    if (!recordId) throw new Error("Usage: seal-home approval-runs document-summary <recordId>");
+    await runTool("seal_approval_run_document_summary_get", client, corp, { recordId }, outputOptions(args.options));
     return;
   }
 
   if (area === "approval-runs" && action === "attachments") {
     const recordId = args.command[2];
     if (!recordId) throw new Error("Usage: seal-home approval-runs attachments <recordId>");
-    await runTool("seal_approval_run_attachments_get", client, corp, { recordId }, outputOptions(args.options));
+    await runTool("seal_approval_run_attachments_get", client, corp, {
+      recordId,
+      summary: booleanOption(args.options.summary)
+    }, outputOptions(args.options));
     return;
   }
 
@@ -961,6 +996,18 @@ function ruleVersionContextOptions(value?: string) {
   return { ruleVersionId: selector.versionId };
 }
 
+function ruleVersionGetOptions(value?: string) {
+  if (!value) return {};
+  const selector = parseRuleVersionSelector(value);
+  if ("latest" in selector) {
+    return { latest: true };
+  }
+  if ("versionNumber" in selector) {
+    return { versionNumber: selector.versionNumber };
+  }
+  return { versionId: selector.versionId };
+}
+
 function parseArgs(argv: string[]): ParsedArgs {
   const command: string[] = [];
   const options: Record<string, string | boolean> = {};
@@ -1013,6 +1060,12 @@ function numberOption(value: string | boolean | undefined): number | undefined {
   const number = Number(value);
   if (!Number.isFinite(number)) throw new Error(`Invalid number: ${value}`);
   return number;
+}
+
+function splitOption(value: string | boolean | undefined): string[] | undefined {
+  if (typeof value !== "string") return undefined;
+  const items = value.split(",").map((item) => item.trim()).filter(Boolean);
+  return items.length ? items : undefined;
 }
 
 function booleanOption(value: string | boolean | undefined): boolean | undefined {
@@ -1079,13 +1132,17 @@ Usage:
   seal-home rules list [--summary] [--count] [--limit 20] [--offset 0] [--corp <corpId>]
   seal-home rules versions [--corp <corpId>]
   seal-home rules version <versionId|versionNumber|latest> [--corp <corpId>]
+  seal-home rules get --version <number|latest> --code '#0038'
+  seal-home rules get --record-id <recordId> --runtime-id rule-205
   seal-home rules search <keyword> [--version <versionId|versionNumber|latest>] [--maxResults 20]
   seal-home context [--ruleVersion <versionId|versionNumber|latest>] [--documentLimit 50]
   seal-home approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
   seal-home approval-runs search [--query text] [--humanResult 驳回] [--manualApprovalStatus TERMINATED] [--startDate ms] [--endDate ms] [--limit 20] [--includeBridge true]
-  seal-home approval-runs pick <documentSN-or-query> [--limit 20]
-  seal-home approval-runs get <recordId> [--fields metadata|document.fields,result.summary] [--full] [--output-file file.json]
-  seal-home approval-runs attachments <recordId>
+  seal-home approval-runs pick --sn <documentSN> [--batch <batchId>] [--latest] [--fields recordId,status,aiDecision]
+  seal-home approval-runs get <recordId> [--summary] [--fields metadata|document.fields,result.summary] [--full] [--output-file file.json]
+  seal-home approval-runs cited-rules <recordId>
+  seal-home approval-runs document-summary <recordId>
+  seal-home approval-runs attachments <recordId> [--summary]
   seal-home approval-runs result <recordId> [--summary]
   seal-home approval-runs url
   seal-home approval-runs url <recordId>

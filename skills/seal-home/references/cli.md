@@ -75,10 +75,17 @@ Approval rule maintenance:
 Approval run lightweight queries:
 
 - `seal-home approval-runs get <recordId> --fields metadata`
+- `seal-home approval-runs get <recordId> --summary`
+- `seal-home approval-runs pick --sn <单号> --batch <batchId> --latest`
+- `seal-home approval-runs document-summary <recordId>`
+- `seal-home approval-runs cited-rules <recordId>`
 - `seal-home approval-runs get <recordId> --fields document.fields,result.summary`
-- `seal-home approval-runs attachments <recordId>`
+- `seal-home approval-runs attachments <recordId> --summary`
 - `seal-home approval-runs result <recordId> --summary`
 - `seal_approval_run_get` with `fields`
+- `seal_approval_run_pick`
+- `seal_approval_run_cited_rules_get`
+- `seal_approval_run_document_summary_get`
 - `seal_approval_run_attachments_get`
 - `seal_approval_run_result_get` with `{"summary":true}`
 
@@ -93,6 +100,8 @@ Approval search and context:
 
 - `seal_approval_search`
 - `seal_approval_context_get`
+- `seal-home rules get --version <number> --code '#0038'`
+- `seal-home rules get --record-id <recordId> --runtime-id rule-205`
 
 Style preferences:
 

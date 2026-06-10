@@ -153,6 +153,39 @@ export const sealTools = [
       api.publishApprovalRuleVersion(client, params.versionName)
   },
   {
+    name: "seal_approval_rule_get",
+    description: "按版本号/code/runtime-id/record-id 定位单条规则，避免拉取整版规则快照",
+    parameters: z.object({
+      versionId: z.string().optional().describe("规则版本 ID"),
+      versionNumber: z.number().int().positive().optional().describe("规则版本号"),
+      latest: z.boolean().optional().describe("为 true 时取最新版本"),
+      code: z.string().optional().describe("规则展示编号，如 #0038；没有后端 code 时按版本内序号匹配"),
+      runtimeId: z.string().optional().describe("运行时规则 ID，如 rule-205；按版本内序号匹配"),
+      recordId: z.string().optional().describe("从运行记录推断 ruleSetVersionNumber")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: {
+        versionId?: string;
+        versionNumber?: number;
+        latest?: boolean;
+        code?: string;
+        runtimeId?: string;
+        recordId?: string;
+      }
+    ) => {
+      const version = await resolveRuleVersionForLookup(client, params);
+      const rule = findRuleInVersion(version, {
+        code: params.code,
+        runtimeId: params.runtimeId
+      });
+      if (!rule) {
+        throw new Error(`Rule not found in version ${version.versionNumber}`);
+      }
+      return rule;
+    }
+  },
+  {
     name: "seal_approval_documents_list",
     description: "列出 Seal 审批知识文档",
     parameters: z.object({
@@ -246,7 +279,10 @@ export const sealTools = [
       ruleVersionScope: z.enum(["current", "all", "version"]).optional().describe("规则检索范围，默认 current；all 会检索所有已发布历史版本"),
       ruleVersionId: z.string().optional().describe("ruleVersionScope=version 时指定版本 ID"),
       ruleVersionNumber: z.number().int().positive().optional().describe("ruleVersionScope=version 时指定版本号"),
-      latestRuleVersion: z.boolean().optional().describe("ruleVersionScope=version 时取最新已发布版本")
+      latestRuleVersion: z.boolean().optional().describe("ruleVersionScope=version 时取最新已发布版本"),
+      snippetOnly: z.boolean().optional().describe("只返回命中行，不返回前后文"),
+      maxChars: z.number().int().positive().optional().describe("每个文本片段最多返回字符数"),
+      fields: z.array(z.string()).optional().describe("只搜索指定字段，如 history.description、description、scope")
     }),
     handler: async (
       client: KyInstance,
@@ -263,6 +299,9 @@ export const sealTools = [
         ruleVersionId?: string;
         ruleVersionNumber?: number;
         latestRuleVersion?: boolean;
+        snippetOnly?: boolean;
+        maxChars?: number;
+        fields?: string[];
       },
       context: ToolContext
     ) => searchApprovalContent(client, context.corp, params)
@@ -464,13 +503,15 @@ export const sealTools = [
     description: "获取 Seal 单条审批/审核运行记录详情；可用 fields 只取 metadata、document.fields、result.summary 等局部字段",
     parameters: z.object({
       recordId: z.string().describe("Seal approval run record ID"),
-      fields: z.union([z.string(), z.array(z.string())]).optional().describe("逗号分隔或数组形式的字段路径，如 metadata、document.fields、result.summary")
+      fields: z.union([z.string(), z.array(z.string())]).optional().describe("逗号分隔或数组形式的字段路径，如 metadata、document.fields、result.summary"),
+      summary: z.boolean().optional().describe("返回单据摘要、AI 结果、人工结果和版本号")
     }),
     handler: async (
       client: KyInstance,
-      params: { recordId: string; fields?: string | string[] }
+      params: { recordId: string; fields?: string | string[]; summary?: boolean }
     ) => {
       const record = await api.getApprovalRun(client, params.recordId);
+      if (params.summary) return summarizeApprovalRunDetail(record);
       const full = {
         ...record,
         aliases: approvalRunAliases(record),
@@ -481,8 +522,8 @@ export const sealTools = [
     }
   },
   {
-    name: "seal_approval_run_attachments_get",
-    description: "从审批运行记录中抽取附件、发票附件和字段位置，不返回完整单据正文和规则结果",
+    name: "seal_approval_run_cited_rules_get",
+    description: "从审批运行结果中抽取 AI 引用或命中的规则及应用分析",
     parameters: z.object({
       recordId: z.string().describe("Seal approval run record ID")
     }),
@@ -491,7 +532,36 @@ export const sealTools = [
       params: { recordId: string }
     ) => {
       const record = await api.getApprovalRun(client, params.recordId);
-      return extractApprovalRunAttachments(record);
+      return extractCitedRules(record);
+    }
+  },
+  {
+    name: "seal_approval_run_document_summary_get",
+    description: "返回单据关键字段、附件摘要、AI/人工结果，避免拉取完整原始单据",
+    parameters: z.object({
+      recordId: z.string().describe("Seal approval run record ID")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { recordId: string }
+    ) => {
+      const record = await api.getApprovalRun(client, params.recordId);
+      return summarizeApprovalRunDocument(record);
+    }
+  },
+  {
+    name: "seal_approval_run_attachments_get",
+    description: "从审批运行记录中抽取附件、发票附件和字段位置，不返回完整单据正文和规则结果",
+    parameters: z.object({
+      recordId: z.string().describe("Seal approval run record ID"),
+      summary: z.boolean().optional().describe("只返回附件列表摘要")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { recordId: string; summary?: boolean }
+    ) => {
+      const record = await api.getApprovalRun(client, params.recordId);
+      return extractApprovalRunAttachments(record, { summary: params.summary });
     }
   },
   {
@@ -552,48 +622,55 @@ export const sealTools = [
     name: "seal_approval_run_pick",
     description: "按合思单号或关键字查询运行记录，返回候选记录及其当时使用的规则版本，便于再取详情或查版本规则",
     parameters: z.object({
-      query: z.string().describe("合思单号、源单据 ID、运行记录 ID 或 trace 关键字"),
+      query: z.string().optional().describe("合思单号、源单据 ID、运行记录 ID 或 trace 关键字"),
+      sn: z.string().optional().describe("合思/易快报单号；优先作为精确 sourceDocumentSN 查询"),
+      batchId: z.string().optional().describe("模拟批次 ID"),
+      latest: z.boolean().optional().describe("只返回最新一条匹配记录"),
+      fields: z.union([z.string(), z.array(z.string())]).optional().describe("限制返回字段"),
       limit: z.number().int().positive().max(100).optional(),
       maxScan: z.number().int().positive().max(5000).optional().describe("最多扫描多少条运行记录用于本地匹配，默认 1000"),
       includeBridge: z.boolean().optional()
     }),
     handler: async (
       client: KyInstance,
-      params: { query: string; limit?: number; maxScan?: number; includeBridge?: boolean }
+      params: {
+        query?: string;
+        sn?: string;
+        batchId?: string;
+        latest?: boolean;
+        fields?: string | string[];
+        limit?: number;
+        maxScan?: number;
+        includeBridge?: boolean;
+      }
     ) => {
+      const query = params.sn ?? params.query;
+      if (!query) throw new Error("query or sn is required");
       const picked = await pickApprovalRuns(client, {
-        query: params.query,
-        limit: params.limit ?? 20,
+        query,
+        sn: params.sn,
+        batchId: params.batchId,
+        latest: params.latest,
+        limit: params.latest ? 1 : params.limit ?? 20,
         maxScan: params.maxScan ?? 1000
       });
       const records = await Promise.all(
         picked.records.map((record) => api.getApprovalRun(client, record.id))
       );
+      const fields = parseFieldPaths(params.fields);
+      const projected = records.map((record) => pickApprovalRunCandidate(record, fields));
 
       return {
-        query: params.query,
+        query,
+        sourceDocumentSN: params.sn,
+        simulationBatchId: params.batchId,
+        latest: params.latest ?? false,
         total: picked.total,
         scanned: picked.scanned,
-        matched: records.length,
-        records: records.map((record) => {
-          const summary = summarizeApprovalRun(record);
-          return {
-            recordId: summary.id,
-            sourceDocumentSN: summary.sourceDocumentSN,
-            sourceDocumentId: summary.sourceDocumentId,
-            status: summary.status,
-            taskMode: summary.taskMode,
-            finalExecutionMode: summary.finalExecutionMode,
-            createdAt: summary.createdAt,
-            ruleSetVersionNumber: summary.ruleSetVersionNumber,
-            ruleSetPublishedAt: summary.ruleSetPublishedAt,
-            ruleSetPublishedByName: summary.ruleSetPublishedByName,
-            langfuseTraceId: summary.langfuseTraceId,
-            langfuseSessionFallback: summary.langfuseSessionFallback
-          };
-        }),
+        matched: projected.length,
+        records: projected,
         next: {
-          getDetail: "seal-home approval-runs get <recordId>",
+          getSummary: "seal-home approval-runs get <recordId> --summary",
           getRuleVersion: "seal-home rules version <ruleSetVersionNumber>",
           searchRuleVersion: "seal-home tool seal_approval_search --json '{\"keywords\":[\"关键词\"],\"areas\":[\"rules\"],\"ruleVersionScope\":\"version\",\"ruleVersionNumber\":14}'",
           getVersionContext: "seal-home tool seal_approval_context_get --json '{\"ruleVersionNumber\":14}'"
@@ -692,6 +769,7 @@ const sealActionNames = [
   "seal_approval_rule_delete",
   "seal_approval_rule_versions_list",
   "seal_approval_rule_version_get",
+  "seal_approval_rule_get",
   "seal_approval_rule_version_publish",
   "seal_approval_documents_list",
   "seal_approval_document_get",
@@ -701,6 +779,10 @@ const sealActionNames = [
   "seal_approval_style_preferences_update",
   "seal_approval_runs_summary",
   "seal_approval_run_get",
+  "seal_approval_run_cited_rules_get",
+  "seal_approval_run_document_summary_get",
+  "seal_approval_run_attachments_get",
+  "seal_approval_run_result_get",
   "seal_approval_run_url_get",
   "seal_approval_run_pick",
   "seal_simulation_batch_records_get",
@@ -715,6 +797,7 @@ const sealActionAliases: Record<string, (typeof sealActionNames)[number]> = {
   "rule.delete": "seal_approval_rule_delete",
   "rule.versions.list": "seal_approval_rule_versions_list",
   "rule.version.get": "seal_approval_rule_version_get",
+  "rule.get": "seal_approval_rule_get",
   "rule.publish": "seal_approval_rule_version_publish",
   "doc.list": "seal_approval_documents_list",
   "doc.get": "seal_approval_document_get",
@@ -724,6 +807,10 @@ const sealActionAliases: Record<string, (typeof sealActionNames)[number]> = {
   "style.update": "seal_approval_style_preferences_update",
   "runs.summary": "seal_approval_runs_summary",
   "runs.get": "seal_approval_run_get",
+  "runs.citedRules": "seal_approval_run_cited_rules_get",
+  "runs.documentSummary": "seal_approval_run_document_summary_get",
+  "runs.attachments": "seal_approval_run_attachments_get",
+  "runs.result": "seal_approval_run_result_get",
   "runs.url": "seal_approval_run_url_get",
   "runs.pick": "seal_approval_run_pick",
   "batch.records.get": "seal_simulation_batch_records_get",
@@ -835,6 +922,8 @@ type ApprovalRunSummary = {
   ruleSetPublishedByName?: string;
   humanResult?: string;
   humanResultPath?: string;
+  aiDecision?: unknown;
+  aiSummary?: unknown;
   createdAt?: string | number;
   updatedAt?: string | number;
 };
@@ -886,6 +975,7 @@ function pickRuleFields(rule: ApprovalRule, fields: readonly RuleField[]) {
 function summarizeApprovalRun(record: ApprovalRun): ApprovalRunSummary {
   const sourceDocumentSN = record.sourceDocumentSN;
   const humanResult = extractHumanResult(record);
+  const ai = summarizeApprovalRunResult(record);
 
   return {
     id: record.id,
@@ -906,6 +996,8 @@ function summarizeApprovalRun(record: ApprovalRun): ApprovalRunSummary {
     ruleSetPublishedByName: record.ruleSetPublishedByName,
     humanResult: humanResult?.value,
     humanResultPath: humanResult?.path,
+    aiDecision: ai.decision,
+    aiSummary: ai.summary,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
   };
@@ -986,6 +1078,19 @@ function approvalRunMetadata(record: ApprovalRun) {
   };
 }
 
+function summarizeApprovalRunDetail(record: ApprovalRun) {
+  return {
+    metadata: approvalRunMetadata(record),
+    document: summarizeApprovalRunDocument(record).document,
+    aiResult: summarizeApprovalRunResult(record),
+    manualResult: extractHumanResult(record)?.value,
+    manualResultPath: extractHumanResult(record)?.path,
+    ruleSetVersionNumber: record.ruleSetVersionNumber,
+    ruleSetPublishedAt: record.ruleSetPublishedAt,
+    ruleSetPublishedByName: record.ruleSetPublishedByName
+  };
+}
+
 function summarizeApprovalRunResult(record: ApprovalRun) {
   const result = asRecord(record.result);
   return {
@@ -1023,7 +1128,37 @@ function summarizeApprovalRunResult(record: ApprovalRun) {
   };
 }
 
-function extractApprovalRunAttachments(record: ApprovalRun) {
+function summarizeApprovalRunDocument(record: ApprovalRun) {
+  const document = asRecord(record.document);
+  const fields = flattenDocumentFields(record.document);
+  const fieldText = fields.map((field) => `${field.label ?? field.path ?? ""}:${field.value ?? ""}`).join("\n");
+  return {
+    recordId: record.id,
+    sourceDocumentSN: record.sourceDocumentSN,
+    sourceDocumentId: record.sourceDocumentId,
+    document: compactObject({
+      id: document?.id,
+      sn: document?.sn ?? document?.sourceDocumentSN ?? record.sourceDocumentSN,
+      title: document?.title ?? document?.name,
+      template: firstPath(document, ["template.name", "templateName", "form.name", "formName", "formTitle"]),
+      amount: firstByLabel(fields, ["金额", "报销金额", "付款金额", "合计", "价税合计"]) ?? firstPath(document, ["amount", "totalAmount", "expenseAmount"]),
+      expenseType: firstByLabel(fields, ["费用类型", "费用类别", "报销类型"]),
+      costCompany: firstByLabel(fields, ["费用承担公司", "承担公司", "成本中心", "费用归属"]),
+      payee: firstByLabel(fields, ["收款方", "收款账户", "收款信息", "开户名", "银行账号"]),
+      keyFields: fields.slice(0, 30)
+    }),
+    invoices: collectInvoiceSummary(record),
+    attachments: extractApprovalRunAttachments(record, { summary: true }).attachments,
+    aiResult: summarizeApprovalRunResult(record),
+    manualResult: extractHumanResult(record)?.value,
+    hints: compactObject({
+      amountMentions: findKeywordLines(fieldText, ["金额", "合计", "税率"], 8),
+      partyMentions: findKeywordLines(fieldText, ["买方", "卖方", "甲方", "乙方", "收款"], 8)
+    })
+  };
+}
+
+function extractApprovalRunAttachments(record: ApprovalRun, options: { summary?: boolean } = {}) {
   const roots: Array<[string, unknown]> = [
     ["document", record.document],
     ["result", record.result],
@@ -1042,7 +1177,68 @@ function extractApprovalRunAttachments(record: ApprovalRun) {
     sourceDocumentSN: record.sourceDocumentSN,
     sourceDocumentId: record.sourceDocumentId,
     count: attachments.length,
-    attachments
+    attachments: options.summary
+      ? attachments.map((attachment) => compactObject({
+        path: attachment.path,
+        kind: attachment.kind,
+        fileName: attachment.fileName,
+        mimeType: attachment.mimeType,
+        fileId: attachment.fileId,
+        sourceField: attachment.sourceField
+      }))
+      : attachments
+  };
+}
+
+function extractCitedRules(record: ApprovalRun) {
+  const candidates: Array<[string, unknown]> = [
+    ["result.citedRules", getPath(record, "result.citedRules")],
+    ["result.matchedRules", getPath(record, "result.matchedRules")],
+    ["result.ruleResults", getPath(record, "result.ruleResults")],
+    ["result.rules", getPath(record, "result.rules")],
+    ["pipelineData.citedRules", getPath(record, "pipelineData.citedRules")],
+    ["pipelineData.matchedRules", getPath(record, "pipelineData.matchedRules")]
+  ];
+  const rules: Array<Record<string, unknown>> = [];
+  const seen = new Set<string>();
+
+  for (const [path, value] of candidates) {
+    const items = Array.isArray(value)
+      ? value
+      : value && typeof value === "object"
+        ? Object.values(value as Record<string, unknown>)
+        : [];
+    items.forEach((item, index) => {
+      const object = asRecord(item);
+      if (!object) return;
+      const runtimeRuleId = stringFromUnknown(object.runtimeRuleId) ?? stringFromUnknown(object.runtimeId) ?? stringFromUnknown(object.id) ?? stringFromUnknown(object.ruleId);
+      const ruleCode = stringFromUnknown(object.ruleCode) ?? stringFromUnknown(object.code) ?? (runtimeRuleId ? runtimeRuleIdToCode(runtimeRuleId) : undefined);
+      const output = compactObject({
+        runtimeRuleId,
+        ruleCode,
+        versionNumber: numberFromUnknown(object.versionNumber) ?? record.ruleSetVersionNumber,
+        scope: stringFromUnknown(object.scope),
+        strictness: stringFromUnknown(object.strictness),
+        appliedAnalysis: object.appliedAnalysis ?? object.analysis ?? object.reasoning,
+        checkResult: object.checkResult ?? object.result ?? object.decision,
+        findings: object.findings ?? object.riskPoints ?? object.evidence,
+        sourcePath: `${path}.${index}`
+      });
+      const key = JSON.stringify(output);
+      if (!seen.has(key)) {
+        seen.add(key);
+        rules.push(output);
+      }
+    });
+  }
+
+  return {
+    recordId: record.id,
+    sourceDocumentSN: record.sourceDocumentSN,
+    sourceDocumentId: record.sourceDocumentId,
+    ruleSetVersionNumber: record.ruleSetVersionNumber,
+    count: rules.length,
+    rules
   };
 }
 
@@ -1156,6 +1352,87 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
+function numberFromUnknown(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function flattenDocumentFields(value: unknown) {
+  const fields: Array<Record<string, unknown>> = [];
+  collectDocumentFields(value, "document", fields);
+  return fields;
+}
+
+function collectDocumentFields(value: unknown, path: string, output: Array<Record<string, unknown>>) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectDocumentFields(item, `${path}.${index}`, output));
+    return;
+  }
+
+  const object = asRecord(value);
+  if (!object) return;
+
+  const label = stringFromUnknown(object.label) ?? stringFromUnknown(object.name) ?? stringFromUnknown(object.title) ?? stringFromUnknown(object.fieldName);
+  const rawValue = object.value ?? object.displayValue ?? object.text ?? object.content;
+  if (label && rawValue !== undefined && typeof rawValue !== "object") {
+    output.push(compactObject({
+      path,
+      label,
+      value: rawValue,
+      type: stringFromUnknown(object.type) ?? stringFromUnknown(object.fieldType)
+    }));
+  }
+
+  for (const [key, child] of Object.entries(object)) {
+    if (key === "attachments") continue;
+    collectDocumentFields(child, `${path}.${key}`, output);
+  }
+}
+
+function firstByLabel(fields: Array<Record<string, unknown>>, labels: string[]) {
+  const hit = fields.find((field) => {
+    const label = stringFromUnknown(field.label) ?? "";
+    return labels.some((item) => label.includes(item));
+  });
+  return hit?.value;
+}
+
+function collectInvoiceSummary(record: ApprovalRun) {
+  const invoices: Array<Record<string, unknown>> = [];
+  collectInvoiceObjects(record.result, "result", invoices);
+  collectInvoiceObjects(record.document, "document", invoices);
+  return invoices.slice(0, 20);
+}
+
+function collectInvoiceObjects(value: unknown, path: string, output: Array<Record<string, unknown>>) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectInvoiceObjects(item, `${path}.${index}`, output));
+    return;
+  }
+  const object = asRecord(value);
+  if (!object) return;
+  if (/invoice|发票/i.test(path)) {
+    output.push(compactObject({
+      path,
+      fileName: stringFromUnknown(object.fileName) ?? stringFromUnknown(object.filename) ?? stringFromUnknown(object.name),
+      buyer: object.buyer ?? object.buyerName ?? object.purchaserName,
+      seller: object.seller ?? object.sellerName,
+      amount: object.amount ?? object.totalAmount ?? object.total,
+      taxRate: object.taxRate,
+      category: object.category ?? object.type
+    }));
+  }
+  for (const [key, child] of Object.entries(object)) {
+    collectInvoiceObjects(child, `${path}.${key}`, output);
+  }
+}
+
+function findKeywordLines(text: string, keywords: string[], limit: number) {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => keywords.some((keyword) => line.includes(keyword)))
+    .slice(0, limit);
+}
+
 function summarizeRunBridge(records: ApprovalRun[]) {
   return records.map((record) => {
     const summary = summarizeApprovalRun(record);
@@ -1195,6 +1472,97 @@ function summarizeRuleVersion(version: RuleSetVersion) {
   };
 }
 
+async function resolveRuleVersionForLookup(
+  client: KyInstance,
+  params: { versionId?: string; versionNumber?: number; latest?: boolean; recordId?: string }
+) {
+  if (params.recordId && !params.versionId && !params.versionNumber && !params.latest) {
+    const record = await api.getApprovalRun(client, params.recordId);
+    if (!record.ruleSetVersionNumber) {
+      throw new Error(`Approval run ${params.recordId} has no ruleSetVersionNumber`);
+    }
+    return resolveRuleVersion(client, { versionNumber: record.ruleSetVersionNumber });
+  }
+  return resolveRuleVersion(client, params);
+}
+
+function findRuleInVersion(
+  version: RuleSetVersion,
+  selector: { code?: string; runtimeId?: string }
+) {
+  const normalizedCode = normalizeRuleCode(selector.code);
+  const runtimeIndex = runtimeRuleIndex(selector.runtimeId);
+  const index = normalizedCode ? Number(normalizedCode.slice(1)) : runtimeIndex;
+
+  if (!index || index < 1) {
+    throw new Error("Pass --code '#0038' or --runtime-id rule-205");
+  }
+
+  const rule = version.rules.find((item, itemIndex) => {
+    const object = item as Record<string, unknown>;
+    const itemCode = normalizeRuleCode(stringFromUnknown(object.code) ?? stringFromUnknown(object.ruleCode));
+    return itemCode === normalizedCode || itemIndex + 1 === index;
+  });
+  if (!rule) return undefined;
+
+  const object = rule as Record<string, unknown>;
+  const position = version.rules.indexOf(rule) + 1;
+  return compactObject({
+    runtimeRuleId: stringFromUnknown(object.runtimeRuleId) ?? `rule-${position}`,
+    ruleCode: normalizeRuleCode(stringFromUnknown(object.code) ?? stringFromUnknown(object.ruleCode)) ?? formatRuleCode(position),
+    versionId: version.id,
+    versionNumber: version.versionNumber,
+    versionName: version.versionName,
+    publishedAt: version.publishedAt,
+    publishedByName: version.publishedByName,
+    description: rule.description,
+    scope: rule.scope,
+    strictness: rule.strictness,
+    status: stringFromUnknown(object.status)
+  });
+}
+
+function normalizeRuleCode(value?: string) {
+  if (!value) return undefined;
+  const digits = value.match(/\d+/)?.[0];
+  return digits ? formatRuleCode(Number(digits)) : value;
+}
+
+function runtimeRuleIndex(value?: string) {
+  if (!value) return undefined;
+  const match = value.match(/(\d+)$/);
+  return match ? Number(match[1]) : undefined;
+}
+
+function runtimeRuleIdToCode(value: string) {
+  const index = runtimeRuleIndex(value);
+  return index ? formatRuleCode(index) : undefined;
+}
+
+function formatRuleCode(value: number) {
+  return `#${String(value).padStart(4, "0")}`;
+}
+
+function pickApprovalRunCandidate(record: ApprovalRun, fields: string[]) {
+  const summary = summarizeApprovalRun(record);
+  const candidate = {
+    recordId: summary.id,
+    sourceDocumentSN: summary.sourceDocumentSN,
+    sourceDocumentId: summary.sourceDocumentId,
+    simulationBatchId: summary.simulationBatchId,
+    status: summary.status,
+    taskMode: summary.taskMode,
+    ruleSetVersionNumber: summary.ruleSetVersionNumber,
+    langfuseTraceId: summary.langfuseTraceId,
+    manualResult: summary.humanResult,
+    aiDecision: summary.aiDecision,
+    aiSummary: summary.aiSummary,
+    createdAt: summary.createdAt
+  };
+  if (fields.length === 0) return candidate;
+  return pickRunFields(candidate, fields);
+}
+
 async function resolveApprovalRunForUrl(
   client: KyInstance,
   params: { recordId?: string; sourceDocumentSN?: string; sourceDocumentId?: string }
@@ -1230,7 +1598,7 @@ function stringFromUnknown(value: unknown): string | undefined {
 
 async function pickApprovalRuns(
   client: KyInstance,
-  params: { query: string; limit: number; maxScan: number }
+  params: { query: string; sn?: string; batchId?: string; latest?: boolean; limit: number; maxScan: number }
 ) {
   const pageSize = Math.min(100, Math.max(params.limit, 20));
   const records: ApprovalRun[] = [];
@@ -1240,22 +1608,38 @@ async function pickApprovalRuns(
   while (scanned < params.maxScan && records.length < params.limit) {
     const data = await api.listApprovalRuns(client, {
       offset: scanned,
-      limit: Math.min(pageSize, params.maxScan - scanned)
+      limit: Math.min(pageSize, params.maxScan - scanned),
+      search: params.sn ?? params.query,
+      sourceDocumentSN: params.sn
     });
 
     total = data.total;
     scanned += data.records.length;
-    records.push(...filterRuns(data.records, params.query));
+    const filtered = filterRuns(data.records, params.query)
+      .filter((record) => !params.sn || record.sourceDocumentSN === params.sn)
+      .filter((record) => !params.batchId || record.sourceExtendData?.simulation_batch_id === params.batchId);
+    records.push(...filtered);
 
     if (data.records.length === 0 || (total !== undefined && scanned >= total)) break;
 
   }
 
+  records.sort((left, right) => timestampOf(right.createdAt) - timestampOf(left.createdAt));
+
   return {
     total,
     scanned,
-    records: records.slice(0, params.limit)
+    records: records.slice(0, params.latest ? 1 : params.limit)
   };
+}
+
+function timestampOf(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
 }
 
 async function resolveRuleVersion(
