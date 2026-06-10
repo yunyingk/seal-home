@@ -1,0 +1,47 @@
+paths:
+  /v1/auth/diagnose:
+    get:
+      tags: [Auth]
+      operationId: diagnoseAuth
+      summary: Diagnose wrapped source-to-Seal authentication
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+      responses:
+        "200":
+          description: Authentication stage diagnosis.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/AuthDiagnosis
+  /v1/whoami:
+    get:
+      tags: [Auth]
+      operationId: whoami
+      summary: Get current wrapped Seal identity
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+      responses:
+        "200":
+          description: Current Seal user and tenant.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/WhoamiResponse
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized
+  /v1/session:
+    get:
+      tags: [Auth]
+      operationId: getSession
+      summary: Get current wrapped Seal session metadata
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+      responses:
+        "200":
+          description: Current session metadata.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/SessionResponse
+        "401":
+          $ref: ../components/responses.yaml#/Unauthorized

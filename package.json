@@ -12,6 +12,7 @@
     "probe": "bun run src/probe.ts",
     "cli": "bun run src/cli.ts",
     "check": "tsc --noEmit",
+    "openapi:bundle": "bun run scripts/bundle-openapi.ts",
     "test": "bun test"
   },
   "dependencies": {
@@ -22,6 +23,7 @@
   "devDependencies": {
     "@types/bun": "^1.3.14",
     "bun-types": "^1.3.14",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "yaml": "^2.9.0"
   }
 }

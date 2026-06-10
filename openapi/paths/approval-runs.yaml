@@ -1,0 +1,202 @@
+paths:
+  /v1/approval-runs:
+    get:
+      tags: [Approval Runs]
+      operationId: searchApprovalRuns
+      summary: Search wrapped approval run history
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+        - $ref: ../components/parameters.yaml#/Offset
+        - $ref: ../components/parameters.yaml#/Limit
+        - name: startDate
+          in: query
+          schema:
+            type: string
+          description: Creation-time lower bound in milliseconds.
+        - name: endDate
+          in: query
+          schema:
+            type: string
+          description: Creation-time upper bound in milliseconds.
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: taskMode
+          in: query
+          schema:
+            type: string
+        - name: manualApprovalStatus
+          in: query
+          schema:
+            oneOf:
+              - type: string
+              - type: array
+                items:
+                  type: string
+        - name: sourceDocumentSN
+          in: query
+          schema:
+            type: string
+          description: Hose/易快报单号 or other external source document number.
+        - name: sourceDocumentId
+          in: query
+          schema:
+            type: string
+        - name: humanResult
+          in: query
+          schema:
+            type: string
+          description: Local human result contains filter, such as 驳回 or 通过.
+        - name: query
+          in: query
+          schema:
+            type: string
+          description: Search across record ID, source document fields, document ID, and trace fields.
+        - name: includeBridge
+          in: query
+          schema:
+            type: boolean
+            default: false
+          description: Include full Langfuse bridge rows.
+      responses:
+        "200":
+          description: Compact wrapped approval run list.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalRunsResponse
+  /v1/approval-runs/summary:
+    get:
+      tags: [Approval Runs]
+      operationId: summarizeApprovalRuns
+      summary: Summarize approval runs by local date
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: timezone
+          in: query
+          schema:
+            type: string
+            default: Asia/Shanghai
+        - $ref: ../components/parameters.yaml#/Limit
+        - name: query
+          in: query
+          schema:
+            type: string
+        - name: humanResult
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Date summary with counts and compact records.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/ApprovalRunsSummary
+  /v1/approval-runs/pick:
+    get:
+      tags: [Approval Runs]
+      operationId: pickApprovalRuns
+      summary: Pick likely approval runs by document number or trace key
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+        - name: query
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: maxScan
+          in: query
+          schema:
+            type: integer
+            default: 1000
+      responses:
+        "200":
+          description: Picked records and suggested next actions.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /v1/approval-runs/bridge:
+    get:
+      tags: [Approval Runs]
+      operationId: getApprovalRunLangfuseBridge
+      summary: Resolve approval runs to Langfuse trace or session hints
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+        - name: recordId
+          in: query
+          schema:
+            type: string
+        - name: sourceDocumentSN
+          in: query
+          schema:
+            type: string
+        - name: sourceDocumentId
+          in: query
+          schema:
+            type: string
+        - name: simulationBatchId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Trace/session bridge hints.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/BridgeResponse
+  /v1/approval-runs/url:
+    get:
+      tags: [Approval Runs]
+      operationId: getApprovalRunUrl
+      summary: Get enterprise assist URL and optional source document URL
+      parameters:
+        - $ref: ../components/parameters.yaml#/CorpId
+        - name: recordId
+          in: query
+          schema:
+            type: string
+        - name: sourceDocumentSN
+          in: query
+          schema:
+            type: string
+        - name: sourceDocumentId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Enterprise and document URLs.
+          content:
+            application/json:
+              schema:
+                $ref: ../components/schemas/index.yaml#/RunUrlResponse
+  /v1/approval-runs/{recordId}:
+    parameters:
+      - $ref: ../components/parameters.yaml#/RecordId
+    get:
+      tags: [Approval Runs]
+      operationId: getApprovalRun
+      summary: Get wrapped approval run detail
+      responses:
+        "200":
+          description: Approval run detail plus stable aliases and human result.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true

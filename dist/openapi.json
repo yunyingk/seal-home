@@ -1,0 +1,2815 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "seal-home Wrapped API",
+    "version": "0.3.0",
+    "description": "HTTP contract for the seal-home wrapped backend API.\n\nThese endpoints describe the stable API that frontend developers and agents should use.\nThey are not the raw downstream Seal endpoints. seal-home is responsible for enterprise\nselection, source authentication, response compaction, and diagnostics-friendly fields.\n"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8787",
+      "description": "Local seal-home service"
+    }
+  ],
+  "security": [
+    {
+      "localSession": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Corps",
+      "description": "Local enterprise configuration selection."
+    },
+    {
+      "name": "Source",
+      "description": "Source-derived Seal enterprise configuration."
+    },
+    {
+      "name": "Auth",
+      "description": "Wrapped authentication diagnostics and current identity."
+    },
+    {
+      "name": "Approval Runs",
+      "description": "Wrapped approval run history, summaries, document URLs, and trace bridge helpers."
+    },
+    {
+      "name": "Approval Knowledge",
+      "description": "Wrapped approval rules, documents, preferences, and search."
+    },
+    {
+      "name": "Simulation",
+      "description": "Wrapped simulation batch record access."
+    }
+  ],
+  "paths": {
+    "/v1/corps": {
+      "get": {
+        "tags": [
+          "Corps"
+        ],
+        "operationId": "listCorps",
+        "summary": "List configured enterprises",
+        "responses": {
+          "200": {
+            "description": "Configured enterprises.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "id",
+                      "name",
+                      "sourceType",
+                      "current"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "sourceType": {
+                        "type": "string",
+                        "enum": [
+                          "hose",
+                          "direct"
+                        ]
+                      },
+                      "current": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/corps/current": {
+      "get": {
+        "tags": [
+          "Corps"
+        ],
+        "operationId": "getCurrentCorp",
+        "summary": "Get current enterprise",
+        "responses": {
+          "200": {
+            "description": "Current enterprise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "name",
+                    "sourceType",
+                    "current"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "sourceType": {
+                      "type": "string",
+                      "enum": [
+                        "hose",
+                        "direct"
+                      ]
+                    },
+                    "current": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/corps/current/switch": {
+      "post": {
+        "tags": [
+          "Corps"
+        ],
+        "operationId": "switchCurrentCorp",
+        "summary": "Switch current enterprise",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "corpId"
+                ],
+                "properties": {
+                  "corpId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Switched enterprise.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "current",
+                    "id",
+                    "name"
+                  ],
+                  "properties": {
+                    "current": {
+                      "type": "boolean"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Requested resource was not found.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/source/config": {
+      "get": {
+        "tags": [
+          "Source"
+        ],
+        "operationId": "getSourceConfig",
+        "summary": "Resolve source-derived Seal enterprise config",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Redacted Seal enterprise config.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "Redacted Seal enterprise config resolved from the configured source."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Local service authentication failed or downstream Seal auth failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/diagnose": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "operationId": "diagnoseAuth",
+        "summary": "Diagnose wrapped source-to-Seal authentication",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Authentication stage diagnosis.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "stages"
+                  ],
+                  "properties": {
+                    "stages": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuthStage"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/whoami": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "operationId": "whoami",
+        "summary": "Get current wrapped Seal identity",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current Seal user and tenant.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "user",
+                    "tenant"
+                  ],
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/SealUser"
+                    },
+                    "tenant": {
+                      "$ref": "#/components/schemas/SealTenant"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Local service authentication failed or downstream Seal auth failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/session": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "operationId": "getSession",
+        "summary": "Get current wrapped Seal session metadata",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current session metadata.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "user",
+                    "session"
+                  ],
+                  "properties": {
+                    "user": {
+                      "$ref": "#/components/schemas/SealUser"
+                    },
+                    "session": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Local service authentication failed or downstream Seal auth failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "error"
+                  ],
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "details": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval/context": {
+      "get": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "getApprovalContext",
+        "summary": "Get rules, documents, and style preferences together",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          },
+          {
+            "name": "documentLimit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          {
+            "name": "latestRuleVersion",
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "ruleVersionNumber",
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approval context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "rules",
+                    "documents",
+                    "stylePreferences"
+                  ],
+                  "properties": {
+                    "rules": {},
+                    "documents": {},
+                    "stylePreferences": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval/search": {
+      "post": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "searchApprovalKnowledge",
+        "summary": "Search approval rules, documents, and preferences",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "keywords"
+                ],
+                "properties": {
+                  "keywords": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "matchMode": {
+                    "type": "string",
+                    "enum": [
+                      "any",
+                      "all"
+                    ]
+                  },
+                  "areas": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "rules",
+                        "documents",
+                        "preferences"
+                      ]
+                    }
+                  },
+                  "maxResults": {
+                    "type": "integer"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Search results with line context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval/rules": {
+      "get": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "listApprovalRules",
+        "summary": "List current draft approval rules",
+        "responses": {
+          "200": {
+            "description": "Draft rules.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "rules"
+                  ],
+                  "properties": {
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ApprovalRule"
+                      }
+                    },
+                    "hasPendingDeletes": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "createApprovalRule",
+        "summary": "Create draft approval rule",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "description",
+                  "scope",
+                  "strictness"
+                ],
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "strictness": {
+                    "type": "string",
+                    "enum": [
+                      "MUST_FOLLOW",
+                      "SHOULD_FOLLOW",
+                      "SUGGESTION"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created rule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "id",
+                    "description",
+                    "scope",
+                    "strictness"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "strictness": {
+                      "type": "string",
+                      "enum": [
+                        "MUST_FOLLOW",
+                        "SHOULD_FOLLOW",
+                        "SUGGESTION"
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval/rules/{ruleId}": {
+      "parameters": [
+        {
+          "name": "ruleId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Approval rule ID."
+        }
+      ],
+      "patch": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "updateApprovalRule",
+        "summary": "Update draft approval rule",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "description": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string"
+                  },
+                  "strictness": {
+                    "type": "string",
+                    "enum": [
+                      "MUST_FOLLOW",
+                      "SHOULD_FOLLOW",
+                      "SUGGESTION"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated rule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "id",
+                    "description",
+                    "scope",
+                    "strictness"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "strictness": {
+                      "type": "string",
+                      "enum": [
+                        "MUST_FOLLOW",
+                        "SHOULD_FOLLOW",
+                        "SUGGESTION"
+                      ]
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "deleteApprovalRule",
+        "summary": "Delete draft approval rule",
+        "responses": {
+          "200": {
+            "description": "Deleted."
+          }
+        }
+      }
+    },
+    "/v1/approval/rule-versions": {
+      "get": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "listApprovalRuleVersions",
+        "summary": "List published approval rule versions",
+        "responses": {
+          "200": {
+            "description": "Published rule versions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true,
+                    "required": [
+                      "id",
+                      "versionNumber",
+                      "versionName",
+                      "rules"
+                    ],
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "versionNumber": {
+                        "type": "integer"
+                      },
+                      "versionName": {
+                        "type": "string"
+                      },
+                      "publishedByName": {
+                        "type": "string"
+                      },
+                      "rules": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval/rule-versions/{versionId}": {
+      "parameters": [
+        {
+          "name": "versionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Published rule version ID."
+        }
+      ],
+      "get": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "getApprovalRuleVersion",
+        "summary": "Get published approval rule version",
+        "responses": {
+          "200": {
+            "description": "Rule version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "id",
+                    "versionNumber",
+                    "versionName",
+                    "rules"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "versionNumber": {
+                      "type": "integer"
+                    },
+                    "versionName": {
+                      "type": "string"
+                    },
+                    "publishedByName": {
+                      "type": "string"
+                    },
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval/rule-versions/publish": {
+      "post": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "publishApprovalRuleVersion",
+        "summary": "Publish current draft rules",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "versionName"
+                ],
+                "properties": {
+                  "versionName": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Published version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval/documents": {
+      "get": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "listApprovalDocuments",
+        "summary": "List approval knowledge documents",
+        "parameters": [
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Zero-based pagination offset."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 20
+            }
+          },
+          {
+            "name": "scenario",
+            "in": "query",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "style": "form",
+            "explode": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Documents.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "articles"
+                  ],
+                  "properties": {
+                    "articles": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ApprovalDocument"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "createApprovalDocument",
+        "summary": "Create approval knowledge document",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "purpose",
+                  "content"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "purpose": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "id",
+                    "title",
+                    "content"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "Usually Markdown."
+                    },
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "scenarios": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval/documents/{documentId}": {
+      "parameters": [
+        {
+          "name": "documentId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Approval knowledge document ID."
+        }
+      ],
+      "get": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "getApprovalDocument",
+        "summary": "Get approval knowledge document",
+        "responses": {
+          "200": {
+            "description": "Document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "id",
+                    "title",
+                    "content"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "Usually Markdown."
+                    },
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "scenarios": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "updateApprovalDocument",
+        "summary": "Update approval knowledge document",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "purpose": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "scenarios": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated document.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "id",
+                    "title",
+                    "content"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "purpose": {
+                      "type": "string"
+                    },
+                    "content": {
+                      "type": "string",
+                      "description": "Usually Markdown."
+                    },
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "scenarios": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "tags": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval/style-preferences": {
+      "get": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "getApprovalStylePreferences",
+        "summary": "Get approval style preferences",
+        "responses": {
+          "200": {
+            "description": "Style preferences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "tone": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    },
+                    "detailLevel": {
+                      "type": "string"
+                    },
+                    "outputFormat": {
+                      "type": "string"
+                    },
+                    "examples": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "prohibitedPhrases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "customInstructions": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Approval Knowledge"
+        ],
+        "operationId": "updateApprovalStylePreferences",
+        "summary": "Update approval style preferences",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": true,
+                "properties": {
+                  "tone": {
+                    "type": "string"
+                  },
+                  "language": {
+                    "type": "string"
+                  },
+                  "detailLevel": {
+                    "type": "string"
+                  },
+                  "outputFormat": {
+                    "type": "string"
+                  },
+                  "examples": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "prohibitedPhrases": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "customInstructions": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated style preferences.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "tone": {
+                      "type": "string"
+                    },
+                    "language": {
+                      "type": "string"
+                    },
+                    "detailLevel": {
+                      "type": "string"
+                    },
+                    "outputFormat": {
+                      "type": "string"
+                    },
+                    "examples": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "prohibitedPhrases": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "customInstructions": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval-runs": {
+      "get": {
+        "tags": [
+          "Approval Runs"
+        ],
+        "operationId": "searchApprovalRuns",
+        "summary": "Search wrapped approval run history",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "description": "Zero-based pagination offset."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            },
+            "description": "Maximum number of records to return."
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Creation-time lower bound in milliseconds."
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Creation-time upper bound in milliseconds."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "taskMode",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "manualApprovalStatus",
+            "in": "query",
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "sourceDocumentSN",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Hose/易快报单号 or other external source document number."
+          },
+          {
+            "name": "sourceDocumentId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "humanResult",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Local human result contains filter, such as 驳回 or 通过."
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search across record ID, source document fields, document ID, and trace fields."
+          },
+          {
+            "name": "includeBridge",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Include full Langfuse bridge rows."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Compact wrapped approval run list.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "required": [
+                    "records"
+                  ],
+                  "properties": {
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ApprovalRun"
+                      }
+                    },
+                    "total": {
+                      "type": "integer"
+                    },
+                    "bridge": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval-runs/summary": {
+      "get": {
+        "tags": [
+          "Approval Runs"
+        ],
+        "operationId": "summarizeApprovalRuns",
+        "summary": "Summarize approval runs by local date",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "timezone",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "default": "Asia/Shanghai"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50
+            },
+            "description": "Maximum number of records to return."
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "humanResult",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Date summary with counts and compact records.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "date": {
+                      "type": "string"
+                    },
+                    "timezone": {
+                      "type": "string"
+                    },
+                    "matched": {
+                      "type": "integer"
+                    },
+                    "statusCounts": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer"
+                      }
+                    },
+                    "taskModeCounts": {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval-runs/pick": {
+      "get": {
+        "tags": [
+          "Approval Runs"
+        ],
+        "operationId": "pickApprovalRuns",
+        "summary": "Pick likely approval runs by document number or trace key",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "maxScan",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1000
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Picked records and suggested next actions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval-runs/bridge": {
+      "get": {
+        "tags": [
+          "Approval Runs"
+        ],
+        "operationId": "getApprovalRunLangfuseBridge",
+        "summary": "Resolve approval runs to Langfuse trace or session hints",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          },
+          {
+            "name": "recordId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sourceDocumentSN",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sourceDocumentId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "simulationBatchId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trace/session bridge hints.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    },
+                    "records": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ApprovalRun"
+                      }
+                    },
+                    "bridge": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval-runs/url": {
+      "get": {
+        "tags": [
+          "Approval Runs"
+        ],
+        "operationId": "getApprovalRunUrl",
+        "summary": "Get enterprise assist URL and optional source document URL",
+        "parameters": [
+          {
+            "name": "corpId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+          },
+          {
+            "name": "recordId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sourceDocumentSN",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sourceDocumentId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Enterprise and document URLs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "properties": {
+                    "enterpriseAssistUrl": {
+                      "type": "string"
+                    },
+                    "enterpriseUrl": {
+                      "type": "string"
+                    },
+                    "documentUrl": {
+                      "type": "string"
+                    },
+                    "recordId": {
+                      "type": "string"
+                    },
+                    "sourceDocumentSN": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/approval-runs/{recordId}": {
+      "parameters": [
+        {
+          "name": "recordId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "seal-home approval run record ID."
+        }
+      ],
+      "get": {
+        "tags": [
+          "Approval Runs"
+        ],
+        "operationId": "getApprovalRun",
+        "summary": "Get wrapped approval run detail",
+        "responses": {
+          "200": {
+            "description": "Approval run detail plus stable aliases and human result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/simulation/batches/{batchId}/records": {
+      "parameters": [
+        {
+          "name": "batchId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "description": "Simulation batch ID."
+        }
+      ],
+      "get": {
+        "tags": [
+          "Simulation"
+        ],
+        "operationId": "getSimulationBatchRecords",
+        "summary": "Get wrapped simulation batch records",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Optional local contains filter for record/document/trace identifiers."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Compact simulation records and bridge hints.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "localSession": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Seal-Home-Session",
+        "description": "Optional local service session header for future HTTP deployments."
+      }
+    },
+    "parameters": {
+      "CorpId": {
+        "name": "corpId",
+        "in": "query",
+        "schema": {
+          "type": "string"
+        },
+        "description": "Optional local enterprise config ID. Defaults to the current selected enterprise."
+      },
+      "Offset": {
+        "name": "offset",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        },
+        "description": "Zero-based pagination offset."
+      },
+      "Limit": {
+        "name": "limit",
+        "in": "query",
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100,
+          "default": 50
+        },
+        "description": "Maximum number of records to return."
+      },
+      "RuleId": {
+        "name": "ruleId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Approval rule ID."
+      },
+      "VersionId": {
+        "name": "versionId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Published rule version ID."
+      },
+      "DocumentId": {
+        "name": "documentId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Approval knowledge document ID."
+      },
+      "RecordId": {
+        "name": "recordId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "seal-home approval run record ID."
+      },
+      "BatchId": {
+        "name": "batchId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string"
+        },
+        "description": "Simulation batch ID."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "error"
+              ],
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "details": {}
+              }
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Local service authentication failed or downstream Seal auth failed.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "error"
+              ],
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "details": {}
+              }
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Requested resource was not found.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": [
+                "error"
+              ],
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                },
+                "details": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "details": {}
+        }
+      },
+      "CorpSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "sourceType",
+          "current"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "sourceType": {
+            "type": "string",
+            "enum": [
+              "hose",
+              "direct"
+            ]
+          },
+          "current": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SwitchCorpRequest": {
+        "type": "object",
+        "required": [
+          "corpId"
+        ],
+        "properties": {
+          "corpId": {
+            "type": "string"
+          }
+        }
+      },
+      "SwitchCorpResponse": {
+        "type": "object",
+        "required": [
+          "current",
+          "id",
+          "name"
+        ],
+        "properties": {
+          "current": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "SourceConfig": {
+        "type": "object",
+        "additionalProperties": true,
+        "description": "Redacted Seal enterprise config resolved from the configured source."
+      },
+      "AuthStage": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "name",
+          "ok"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "examples": [
+              "hose.openapi",
+              "hose.provisional",
+              "seal.sso",
+              "seal.whoami"
+            ]
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "AuthDiagnosis": {
+        "type": "object",
+        "required": [
+          "stages"
+        ],
+        "properties": {
+          "stages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthStage"
+            }
+          }
+        }
+      },
+      "SealUser": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "tenantId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isAdmin": {
+            "type": "boolean"
+          },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SealTenant": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tenantSlug": {
+            "type": "string"
+          }
+        }
+      },
+      "WhoamiResponse": {
+        "type": "object",
+        "required": [
+          "user",
+          "tenant"
+        ],
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/SealUser"
+          },
+          "tenant": {
+            "$ref": "#/components/schemas/SealTenant"
+          }
+        }
+      },
+      "SessionResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "user",
+          "session"
+        ],
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/SealUser"
+          },
+          "session": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "ApprovalRule": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "description",
+          "scope",
+          "strictness"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "strictness": {
+            "type": "string",
+            "enum": [
+              "MUST_FOLLOW",
+              "SHOULD_FOLLOW",
+              "SUGGESTION"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "ApprovalRuleInput": {
+        "type": "object",
+        "required": [
+          "description",
+          "scope",
+          "strictness"
+        ],
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "strictness": {
+            "type": "string",
+            "enum": [
+              "MUST_FOLLOW",
+              "SHOULD_FOLLOW",
+              "SUGGESTION"
+            ]
+          }
+        }
+      },
+      "ApprovalRulePatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string"
+          },
+          "strictness": {
+            "type": "string",
+            "enum": [
+              "MUST_FOLLOW",
+              "SHOULD_FOLLOW",
+              "SUGGESTION"
+            ]
+          }
+        }
+      },
+      "ApprovalRulesResponse": {
+        "type": "object",
+        "required": [
+          "rules"
+        ],
+        "properties": {
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRule"
+            }
+          },
+          "hasPendingDeletes": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RuleSetVersion": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "versionNumber",
+          "versionName",
+          "rules"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "versionNumber": {
+            "type": "integer"
+          },
+          "versionName": {
+            "type": "string"
+          },
+          "publishedByName": {
+            "type": "string"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "PublishRuleVersionRequest": {
+        "type": "object",
+        "required": [
+          "versionName"
+        ],
+        "properties": {
+          "versionName": {
+            "type": "string"
+          }
+        }
+      },
+      "ApprovalDocument": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "title",
+          "content"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string",
+            "description": "Usually Markdown."
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ApprovalDocumentInput": {
+        "type": "object",
+        "required": [
+          "title",
+          "purpose",
+          "content"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ApprovalDocumentPatch": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "purpose": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "contentType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ApprovalDocumentsResponse": {
+        "type": "object",
+        "required": [
+          "articles"
+        ],
+        "properties": {
+          "articles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalDocument"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        }
+      },
+      "ApprovalStylePreferences": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "tone": {
+            "type": "string"
+          },
+          "language": {
+            "type": "string"
+          },
+          "detailLevel": {
+            "type": "string"
+          },
+          "outputFormat": {
+            "type": "string"
+          },
+          "examples": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prohibitedPhrases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "customInstructions": {
+            "type": "string"
+          }
+        }
+      },
+      "ApprovalContext": {
+        "type": "object",
+        "required": [
+          "rules",
+          "documents",
+          "stylePreferences"
+        ],
+        "properties": {
+          "rules": {},
+          "documents": {},
+          "stylePreferences": {}
+        }
+      },
+      "ApprovalSearchRequest": {
+        "type": "object",
+        "required": [
+          "keywords"
+        ],
+        "properties": {
+          "keywords": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
+          "matchMode": {
+            "type": "string",
+            "enum": [
+              "any",
+              "all"
+            ]
+          },
+          "areas": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "rules",
+                "documents",
+                "preferences"
+              ]
+            }
+          },
+          "maxResults": {
+            "type": "integer"
+          }
+        }
+      },
+      "ApprovalSearchResponse": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "ApprovalRun": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "sourceDocumentSN": {
+            "type": "string",
+            "description": "External document number, often Hose/易快报单号."
+          },
+          "sourceDocumentId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "taskMode": {
+            "type": "string"
+          },
+          "finalExecutionMode": {
+            "type": "string"
+          },
+          "ruleSetVersionNumber": {
+            "type": "integer"
+          },
+          "langfuseTraceId": {
+            "type": "string"
+          },
+          "langfuseSessionFallback": {
+            "type": "string"
+          }
+        }
+      },
+      "ApprovalRunsResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "records"
+        ],
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRun"
+            }
+          },
+          "total": {
+            "type": "integer"
+          },
+          "bridge": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      },
+      "ApprovalRunsSummary": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "date": {
+            "type": "string"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "matched": {
+            "type": "integer"
+          },
+          "statusCounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          },
+          "taskModeCounts": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "RunUrlResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "enterpriseAssistUrl": {
+            "type": "string"
+          },
+          "enterpriseUrl": {
+            "type": "string"
+          },
+          "documentUrl": {
+            "type": "string"
+          },
+          "recordId": {
+            "type": "string"
+          },
+          "sourceDocumentSN": {
+            "type": "string"
+          }
+        }
+      },
+      "BridgeResponse": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApprovalRun"
+            }
+          },
+          "bridge": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        }
+      }
+    }
+  }
+}

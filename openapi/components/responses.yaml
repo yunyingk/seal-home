@@ -1,0 +1,18 @@
+BadRequest:
+  description: Invalid request.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas/index.yaml#/ErrorResponse
+Unauthorized:
+  description: Local service authentication failed or downstream Seal auth failed.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas/index.yaml#/ErrorResponse
+NotFound:
+  description: Requested resource was not found.
+  content:
+    application/json:
+      schema:
+        $ref: ./schemas/index.yaml#/ErrorResponse

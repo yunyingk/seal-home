@@ -1,0 +1,403 @@
+ErrorResponse:
+  type: object
+  additionalProperties: true
+  required: [error]
+  properties:
+    error:
+      type: string
+    message:
+      type: string
+    details: {}
+CorpSummary:
+  type: object
+  required: [id, name, sourceType, current]
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    sourceType:
+      type: string
+      enum: [hose, direct]
+    current:
+      type: boolean
+SwitchCorpRequest:
+  type: object
+  required: [corpId]
+  properties:
+    corpId:
+      type: string
+SwitchCorpResponse:
+  type: object
+  required: [current, id, name]
+  properties:
+    current:
+      type: boolean
+    id:
+      type: string
+    name:
+      type: string
+SourceConfig:
+  type: object
+  additionalProperties: true
+  description: Redacted Seal enterprise config resolved from the configured source.
+AuthStage:
+  type: object
+  additionalProperties: true
+  required: [name, ok]
+  properties:
+    name:
+      type: string
+      examples: [hose.openapi, hose.provisional, seal.sso, seal.whoami]
+    ok:
+      type: boolean
+    error:
+      type: string
+AuthDiagnosis:
+  type: object
+  required: [stages]
+  properties:
+    stages:
+      type: array
+      items:
+        $ref: '#/components/schemas/AuthStage'
+SealUser:
+  type: object
+  additionalProperties: true
+  required: [id, name]
+  properties:
+    id:
+      type: string
+    tenantId:
+      type: string
+    name:
+      type: string
+    isAdmin:
+      type: boolean
+    permissions:
+      type: array
+      items:
+        type: string
+SealTenant:
+  type: object
+  additionalProperties: true
+  required: [id, name]
+  properties:
+    id:
+      type: string
+    name:
+      type: string
+    tenantSlug:
+      type: string
+WhoamiResponse:
+  type: object
+  required: [user, tenant]
+  properties:
+    user:
+      $ref: '#/components/schemas/SealUser'
+    tenant:
+      $ref: '#/components/schemas/SealTenant'
+SessionResponse:
+  type: object
+  additionalProperties: true
+  required: [user, session]
+  properties:
+    user:
+      $ref: '#/components/schemas/SealUser'
+    session:
+      type: object
+      additionalProperties: true
+ApprovalRule:
+  type: object
+  additionalProperties: true
+  required: [id, description, scope, strictness]
+  properties:
+    id:
+      type: string
+    description:
+      type: string
+    scope:
+      type: string
+    strictness:
+      type: string
+      enum: [MUST_FOLLOW, SHOULD_FOLLOW, SUGGESTION]
+    status:
+      type: string
+ApprovalRuleInput:
+  type: object
+  required: [description, scope, strictness]
+  properties:
+    description:
+      type: string
+    scope:
+      type: string
+    strictness:
+      type: string
+      enum: [MUST_FOLLOW, SHOULD_FOLLOW, SUGGESTION]
+ApprovalRulePatch:
+  type: object
+  additionalProperties: false
+  properties:
+    description:
+      type: string
+    scope:
+      type: string
+    strictness:
+      type: string
+      enum: [MUST_FOLLOW, SHOULD_FOLLOW, SUGGESTION]
+ApprovalRulesResponse:
+  type: object
+  required: [rules]
+  properties:
+    rules:
+      type: array
+      items:
+        $ref: '#/components/schemas/ApprovalRule'
+    hasPendingDeletes:
+      type: boolean
+RuleSetVersion:
+  type: object
+  additionalProperties: true
+  required: [id, versionNumber, versionName, rules]
+  properties:
+    id:
+      type: string
+    versionNumber:
+      type: integer
+    versionName:
+      type: string
+    publishedByName:
+      type: string
+    rules:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+PublishRuleVersionRequest:
+  type: object
+  required: [versionName]
+  properties:
+    versionName:
+      type: string
+ApprovalDocument:
+  type: object
+  additionalProperties: true
+  required: [id, title, content]
+  properties:
+    id:
+      type: string
+    title:
+      type: string
+    purpose:
+      type: string
+    content:
+      type: string
+      description: Usually Markdown.
+    contentType:
+      type: string
+    status:
+      type: string
+    enabled:
+      type: boolean
+    scenarios:
+      type: array
+      items:
+        type: string
+    tags:
+      type: array
+      items:
+        type: string
+ApprovalDocumentInput:
+  type: object
+  required: [title, purpose, content]
+  properties:
+    title:
+      type: string
+    purpose:
+      type: string
+    content:
+      type: string
+    contentType:
+      type: string
+    status:
+      type: string
+    scenarios:
+      type: array
+      items:
+        type: string
+    tags:
+      type: array
+      items:
+        type: string
+ApprovalDocumentPatch:
+  type: object
+  additionalProperties: false
+  properties:
+    title:
+      type: string
+    purpose:
+      type: string
+    content:
+      type: string
+    contentType:
+      type: string
+    status:
+      type: string
+    enabled:
+      type: boolean
+    scenarios:
+      type: array
+      items:
+        type: string
+    tags:
+      type: array
+      items:
+        type: string
+ApprovalDocumentsResponse:
+  type: object
+  required: [articles]
+  properties:
+    articles:
+      type: array
+      items:
+        $ref: '#/components/schemas/ApprovalDocument'
+    total:
+      type: integer
+ApprovalStylePreferences:
+  type: object
+  additionalProperties: true
+  properties:
+    tone:
+      type: string
+    language:
+      type: string
+    detailLevel:
+      type: string
+    outputFormat:
+      type: string
+    examples:
+      type: array
+      items:
+        type: string
+    prohibitedPhrases:
+      type: array
+      items:
+        type: string
+    customInstructions:
+      type: string
+ApprovalContext:
+  type: object
+  required: [rules, documents, stylePreferences]
+  properties:
+    rules: {}
+    documents: {}
+    stylePreferences: {}
+ApprovalSearchRequest:
+  type: object
+  required: [keywords]
+  properties:
+    keywords:
+      type: array
+      minItems: 1
+      items:
+        type: string
+    matchMode:
+      type: string
+      enum: [any, all]
+    areas:
+      type: array
+      items:
+        type: string
+        enum: [rules, documents, preferences]
+    maxResults:
+      type: integer
+ApprovalSearchResponse:
+  type: object
+  additionalProperties: true
+ApprovalRun:
+  type: object
+  additionalProperties: true
+  required: [id]
+  properties:
+    id:
+      type: string
+    sourceDocumentSN:
+      type: string
+      description: External document number, often Hose/易快报单号.
+    sourceDocumentId:
+      type: string
+    status:
+      type: string
+    taskMode:
+      type: string
+    finalExecutionMode:
+      type: string
+    ruleSetVersionNumber:
+      type: integer
+    langfuseTraceId:
+      type: string
+    langfuseSessionFallback:
+      type: string
+ApprovalRunsResponse:
+  type: object
+  additionalProperties: true
+  required: [records]
+  properties:
+    records:
+      type: array
+      items:
+        $ref: '#/components/schemas/ApprovalRun'
+    total:
+      type: integer
+    bridge:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+ApprovalRunsSummary:
+  type: object
+  additionalProperties: true
+  properties:
+    date:
+      type: string
+    timezone:
+      type: string
+    matched:
+      type: integer
+    statusCounts:
+      type: object
+      additionalProperties:
+        type: integer
+    taskModeCounts:
+      type: object
+      additionalProperties:
+        type: integer
+RunUrlResponse:
+  type: object
+  additionalProperties: true
+  properties:
+    enterpriseAssistUrl:
+      type: string
+    enterpriseUrl:
+      type: string
+    documentUrl:
+      type: string
+    recordId:
+      type: string
+    sourceDocumentSN:
+      type: string
+BridgeResponse:
+  type: object
+  additionalProperties: true
+  properties:
+    count:
+      type: integer
+    records:
+      type: array
+      items:
+        $ref: '#/components/schemas/ApprovalRun'
+    bridge:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
