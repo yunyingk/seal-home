@@ -461,7 +461,28 @@ export const sealTools = [
   },
   {
     name: "seal_approval_run_get",
-    description: "获取 Seal 单条审批/审核运行记录详情，用于查看 result、pipelineData 等列表接口省略的字段",
+    description: "获取 Seal 单条审批/审核运行记录详情；可用 fields 只取 metadata、document.fields、result.summary 等局部字段",
+    parameters: z.object({
+      recordId: z.string().describe("Seal approval run record ID"),
+      fields: z.union([z.string(), z.array(z.string())]).optional().describe("逗号分隔或数组形式的字段路径，如 metadata、document.fields、result.summary")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { recordId: string; fields?: string | string[] }
+    ) => {
+      const record = await api.getApprovalRun(client, params.recordId);
+      const full = {
+        ...record,
+        aliases: approvalRunAliases(record),
+        humanResult: extractHumanResult(record)
+      };
+      const fields = parseFieldPaths(params.fields);
+      return fields.length > 0 ? pickRunFields(full, fields) : full;
+    }
+  },
+  {
+    name: "seal_approval_run_attachments_get",
+    description: "从审批运行记录中抽取附件、发票附件和字段位置，不返回完整单据正文和规则结果",
     parameters: z.object({
       recordId: z.string().describe("Seal approval run record ID")
     }),
@@ -470,10 +491,25 @@ export const sealTools = [
       params: { recordId: string }
     ) => {
       const record = await api.getApprovalRun(client, params.recordId);
+      return extractApprovalRunAttachments(record);
+    }
+  },
+  {
+    name: "seal_approval_run_result_get",
+    description: "返回审批运行结果摘要；summary=true 时只返回 decision、summary、风险点数量、命中规则数量、traceId 等",
+    parameters: z.object({
+      recordId: z.string().describe("Seal approval run record ID"),
+      summary: z.boolean().optional()
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { recordId: string; summary?: boolean }
+    ) => {
+      const record = await api.getApprovalRun(client, params.recordId);
+      if (params.summary) return summarizeApprovalRunResult(record);
       return {
-        ...record,
-        aliases: approvalRunAliases(record),
-        humanResult: extractHumanResult(record)
+        recordId: record.id,
+        result: record.result
       };
     }
   },
@@ -905,6 +941,219 @@ function summarizeApprovalRuns(records: ApprovalRun[], options: ApprovalRunsSumm
       };
     })
   };
+}
+
+function parseFieldPaths(fields: string | string[] | undefined): string[] {
+  if (!fields) return [];
+  const raw = Array.isArray(fields) ? fields : fields.split(",");
+  return raw.map((field) => field.trim()).filter(Boolean);
+}
+
+function pickRunFields(record: Record<string, unknown>, fields: readonly string[]) {
+  const output: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (field === "metadata") {
+      output.metadata = approvalRunMetadata(record as ApprovalRun);
+      continue;
+    }
+    const value = getPath(record, field);
+    if (value !== undefined) setPath(output, field, value);
+  }
+  return output;
+}
+
+function approvalRunMetadata(record: ApprovalRun) {
+  const summary = summarizeApprovalRun(record);
+  return {
+    recordId: summary.id,
+    tenantId: summary.tenantId,
+    agentId: summary.agentId,
+    sourceSystem: summary.sourceSystem,
+    sourceDocumentSN: summary.sourceDocumentSN,
+    sourceDocumentId: summary.sourceDocumentId,
+    documentId: summary.documentId,
+    status: summary.status,
+    taskMode: summary.taskMode,
+    finalExecutionMode: summary.finalExecutionMode,
+    simulationBatchId: summary.simulationBatchId,
+    langfuseTraceId: summary.langfuseTraceId,
+    langfuseSessionFallback: summary.langfuseSessionFallback,
+    ruleSetVersionNumber: summary.ruleSetVersionNumber,
+    ruleSetPublishedAt: summary.ruleSetPublishedAt,
+    ruleSetPublishedByName: summary.ruleSetPublishedByName,
+    createdAt: summary.createdAt,
+    updatedAt: summary.updatedAt
+  };
+}
+
+function summarizeApprovalRunResult(record: ApprovalRun) {
+  const result = asRecord(record.result);
+  return {
+    recordId: record.id,
+    sourceDocumentSN: record.sourceDocumentSN,
+    sourceDocumentId: record.sourceDocumentId,
+    traceId: record.sourceExtendData?._langfuseTraceId,
+    langfuseTraceId: record.sourceExtendData?._langfuseTraceId,
+    decision: firstPath(result, [
+      "decision",
+      "manualApproval.decision",
+      "manualApproval.result",
+      "review.decision",
+      "finalDecision"
+    ]),
+    summary: firstPath(result, [
+      "summary",
+      "result.summary",
+      "review.summary",
+      "conclusion"
+    ]),
+    riskPointCount: countPathCandidates(result, [
+      "riskPoints",
+      "risks",
+      "risk_points",
+      "review.riskPoints"
+    ]),
+    matchedRuleCount: countPathCandidates(result, [
+      "matchedRules",
+      "hitRules",
+      "ruleResults",
+      "rules",
+      "review.matchedRules"
+    ])
+  };
+}
+
+function extractApprovalRunAttachments(record: ApprovalRun) {
+  const roots: Array<[string, unknown]> = [
+    ["document", record.document],
+    ["result", record.result],
+    ["pipelineData", record.pipelineData],
+    ["sourceExtendData", record.sourceExtendData]
+  ];
+  const attachments: Array<Record<string, unknown>> = [];
+  const seen = new Set<string>();
+
+  for (const [path, value] of roots) {
+    collectAttachments(value, path, attachments, seen);
+  }
+
+  return {
+    recordId: record.id,
+    sourceDocumentSN: record.sourceDocumentSN,
+    sourceDocumentId: record.sourceDocumentId,
+    count: attachments.length,
+    attachments
+  };
+}
+
+function collectAttachments(
+  value: unknown,
+  path: string,
+  output: Array<Record<string, unknown>>,
+  seen: Set<string>
+) {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => collectAttachments(item, `${path}.${index}`, output, seen));
+    return;
+  }
+
+  const object = asRecord(value);
+  if (!object) return;
+
+  if (looksLikeAttachment(object, path)) {
+    const attachment = compactObject({
+      path,
+      fieldPath: path,
+      kind: inferAttachmentKind(path, object),
+      fileName: stringFromUnknown(object.fileName) ?? stringFromUnknown(object.filename) ?? stringFromUnknown(object.name) ?? stringFromUnknown(object.originalName),
+      mimeType: stringFromUnknown(object.mimeType) ?? stringFromUnknown(object.mimetype) ?? stringFromUnknown(object.contentType),
+      fileId: stringFromUnknown(object.fileId) ?? stringFromUnknown(object.id) ?? stringFromUnknown(object.attachmentId),
+      ossPath: stringFromUnknown(object.ossPath) ?? stringFromUnknown(object.ossKey) ?? stringFromUnknown(object.key),
+      url: stringFromUnknown(object.url) ?? stringFromUnknown(object.signedUrl) ?? stringFromUnknown(object.downloadUrl) ?? stringFromUnknown(object.previewUrl),
+      invoiceId: stringFromUnknown(object.invoiceId),
+      sourceField: stringFromUnknown(object.fieldName) ?? stringFromUnknown(object.label)
+    });
+    const key = JSON.stringify(attachment);
+    if (!seen.has(key)) {
+      seen.add(key);
+      output.push(attachment);
+    }
+  }
+
+  for (const [key, child] of Object.entries(object)) {
+    collectAttachments(child, `${path}.${key}`, output, seen);
+  }
+}
+
+function looksLikeAttachment(object: Record<string, unknown>, path: string) {
+  const keys = Object.keys(object).map((key) => key.toLowerCase());
+  const pathHint = /(attachment|attachments|invoice|receipt|file|files|附件|发票)/i.test(path);
+  const fileHints = ["filename", "fileName", "mimeType", "mimetype", "contentType", "fileId", "ossPath", "signedUrl", "downloadUrl", "previewUrl", "attachmentId"];
+  return pathHint && fileHints.some((key) => keys.includes(key.toLowerCase()));
+}
+
+function inferAttachmentKind(path: string, object: Record<string, unknown>) {
+  const normalized = `${path} ${stringFromUnknown(object.type) ?? ""}`.toLowerCase();
+  if (normalized.includes("invoice") || normalized.includes("发票")) return "invoice";
+  if (normalized.includes("receipt")) return "receipt";
+  return "attachment";
+}
+
+function firstPath(object: Record<string, unknown> | undefined, paths: readonly string[]) {
+  if (!object) return undefined;
+  for (const path of paths) {
+    const value = getPath(object, path);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function countPathCandidates(object: Record<string, unknown> | undefined, paths: readonly string[]) {
+  if (!object) return 0;
+  for (const path of paths) {
+    const value = getPath(object, path);
+    if (Array.isArray(value)) return value.length;
+    if (value && typeof value === "object") return Object.keys(value).length;
+    if (typeof value === "number") return value;
+  }
+  return 0;
+}
+
+function getPath(value: unknown, path: string): unknown {
+  return path.split(".").reduce<unknown>((current, segment) => {
+    if (current === undefined || current === null) return undefined;
+    if (Array.isArray(current)) {
+      const index = Number(segment);
+      return Number.isInteger(index) ? current[index] : undefined;
+    }
+    if (typeof current === "object") {
+      return (current as Record<string, unknown>)[segment];
+    }
+    return undefined;
+  }, value);
+}
+
+function setPath(target: Record<string, unknown>, path: string, value: unknown) {
+  const segments = path.split(".");
+  let current = target;
+  for (const segment of segments.slice(0, -1)) {
+    const existing = current[segment];
+    if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+      current[segment] = {};
+    }
+    current = current[segment] as Record<string, unknown>;
+  }
+  current[segments[segments.length - 1] ?? path] = value;
+}
+
+function compactObject(object: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(object).filter(([, value]) => value !== undefined));
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
 }
 
 function summarizeRunBridge(records: ApprovalRun[]) {

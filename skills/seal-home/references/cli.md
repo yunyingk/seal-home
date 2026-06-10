@@ -25,10 +25,14 @@ seal-home corps current
 seal-home corps switch <corpId>
 seal-home corps add-hose --json '{"name":"企业名称","domain":"https://app.ekuaibao.com","appKey":"...","appSecurity":"...","proxyStaffBizId":"corpId:staffId"}'
 seal-home auth diagnose [--corp <corpId>]
+seal-home auth hose-link [--corp <corpId>] [--expire 7200]
 seal-home source config [--corp <corpId>]
 seal-home tool <toolName> [--corp <corpId>] [--json '{"key":"value"}']
 seal-home approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
 seal-home approval-runs search [--query text] [--limit 20] [--includeBridge true]
+seal-home approval-runs get <recordId> [--fields metadata|document.fields,result.summary] [--output-file file.json]
+seal-home approval-runs attachments <recordId>
+seal-home approval-runs result <recordId> [--summary]
 seal-home approval-runs url
 seal-home approval-runs url <recordId>
 seal-home approval-runs url --sourceDocumentSN B26001887
@@ -67,6 +71,16 @@ Approval rule maintenance:
 - `seal_approval_rule_delete`
 - `seal_approval_rule_versions_list`
 - `seal_approval_rule_version_publish`
+
+Approval run lightweight queries:
+
+- `seal-home approval-runs get <recordId> --fields metadata`
+- `seal-home approval-runs get <recordId> --fields document.fields,result.summary`
+- `seal-home approval-runs attachments <recordId>`
+- `seal-home approval-runs result <recordId> --summary`
+- `seal_approval_run_get` with `fields`
+- `seal_approval_run_attachments_get`
+- `seal_approval_run_result_get` with `{"summary":true}`
 
 Approval knowledge documents:
 
