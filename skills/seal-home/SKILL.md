@@ -1,15 +1,13 @@
 ---
 name: seal-home
-description: Use when working with Seal Home approval automation, seal-home CLI or MCP tools, approval rules and documents, approval run history, simulations, enterprise auth diagnostics, and Langfuse trace hints.
+description: Use when working with Seal Home approval automation: 合思/易快报企业认证, Hose authorization links, approval run lookup by 单号/SN/recordId/batch, compact approval run summaries, AI cited rules, document/attachment summaries, approval rules by count/list/version/code/runtime-id, approval knowledge search, simulations, and Langfuse trace hints.
 metadata:
   short-description: Seal approval automation tools
 ---
 
 # Seal Home
 
-## Quick Start
-
-Use the global `seal-home` CLI. It should work from any directory after installation:
+Use the global `seal-home` CLI. This skill is a routing layer for agents: keep this file short, choose the right command, and read a focused reference only when the task needs detail.
 
 ```bash
 seal-home help
@@ -17,182 +15,72 @@ seal-home version
 seal-home tools list
 ```
 
-Use CLI for broad or detailed operations. The CLI intentionally exposes the full fine-grained tool list and is the primary interface for shared/public use.
+## First Rules
 
-Enterprise configs are loaded from `SEAL_HOME_ENTERPRISES_DIR` when it is set. Otherwise `./enterprises` and `~/.config/seal-home/enterprises` are merged, with user-level configs overriding same-ID local configs. Prefer user-level config for shared/public installs so commands do not depend on the repository working directory.
+- Prefer compact commands first: `pick`, `--summary`, `--fields`, `attachments --summary`, `rules count`, and `rules list --summary`.
+- Parse JSON stdout. Do not scrape human text.
+- Do not hand-edit enterprise configs for normal setup. Use `seal-home corps ...`.
+- Before write operations on rules, documents, style preferences, or publishing, fetch current state and confirm the intended mutation with the user.
+- For date questions, use explicit dates and `--timezone Asia/Shanghai`.
+- If output may be large, use `--summary`, `--fields`, `--count`, or `--output-file`; use `--full` only when the user really needs full payloads.
 
-Optional local service commands:
+## Route By Intent
 
-```bash
-seal-home service start
-seal-home service status
-seal-home service restart
-seal-home service stop
-seal-home update
-```
+- Current tenant or identity: `seal-home tool seal_whoami`.
+- Enterprise list/current/switch/add: `seal-home corps ...`; for Hose setup read `references/hose-enterprise-auth.md`.
+- Hose login/SSO/auth failures: `seal-home auth diagnose --corp <corpId>`.
+- User-facing 合思 authorization link: `seal-home auth hose-link --corp <corpId> --expire 7200`; read `references/hose-enterprise-auth.md`.
+- One approval document by 单号/SN: use `seal-home approval-runs pick --sn <单号> --latest`; read `references/approval-run-lightweight.md`.
+- One approval run detail: use `approval-runs get <recordId> --summary` or `--fields ...`; read `references/approval-run-lightweight.md`.
+- AI used which rules: use `approval-runs cited-rules <recordId>`; read `references/approval-run-lightweight.md`.
+- Case/document facts before deep dive: use `approval-runs document-summary <recordId>`.
+- Attachments/invoices without full raw document: use `approval-runs attachments <recordId> --summary`.
+- Customer disputes OCR, receipt, invoice, image, or attachment findings: read `references/approval-attachment-trace.md`.
+- Rules count/list/version lookup: use `rules count`, `rules list --summary`, or `rules get`; read `references/rule-lightweight.md`.
+- Rule/document/style maintenance: use fine-grained `seal-home tool <toolName> --json ...`.
+- Approval knowledge search: use `seal_approval_search` with `snippetOnly`, `maxChars`, and `fields` when possible; read `references/rule-lightweight.md`.
+- Daily run summary: `seal-home approval-runs summary --date YYYY-MM-DD --timezone Asia/Shanghai --limit 100`.
+- Simulation batch: `seal-home simulation batch-records <batchId>`.
+- Full CLI inventory: read `references/cli.md`.
 
-Use `seal-home update` after pulling new versions; it restarts the service if it was running so new code is picked up.
-
-## Decision Guide
-
-- For current identity or tenant: use `seal-home tool seal_whoami`.
-- For configured enterprises: use `seal-home corps list`.
-- For Hose login, SSO, or "Unable to connect" authentication failures: use `seal-home auth diagnose [--corp <corpId>]`.
-- For an unredacted Hose provisional auth link: use `seal-home auth hose-link --corp <corpId> --expire 7200`.
-- For source-derived enterprise config: use `seal-home source config`.
-- For daily approval run questions: use `seal-home approval-runs summary --date YYYY-MM-DD --timezone Asia/Shanghai`.
-- For approval run lookup by document SN, ID, status, mode, or trace: use `seal-home approval-runs search`.
-- For compact approval run detail: use `seal-home approval-runs get <recordId> --fields metadata`, `seal-home approval-runs attachments <recordId>`, or `seal-home approval-runs result <recordId> --summary`.
-- For Hose enterprise assist links: use `seal-home approval-runs url`; add `<recordId>` or `--sourceDocumentSN B26001887` when a document link is also needed.
-- For Langfuse lookup hints: use `seal-home approval-runs bridge`.
-- For one simulation batch: use `seal-home simulation batch-records <batchId>`.
-- For approval rule/document/style maintenance: use `seal-home tool <toolName> --json '{...}'`.
-
-## Task Playbooks
-
-### Diagnose Hose authentication
-
-Use when a Hose/合思 sourced enterprise cannot log in, `seal_whoami` fails, or an agent needs to verify a newly added enterprise config.
+## High-Value Commands
 
 ```bash
-seal-home auth diagnose --corp <corpId>
-```
-
-Read the JSON `stages` in order:
-
-- `hose.openapi`: appKey/appSecurity can get a Hose OpenAPI token and corporation ID.
-- `hose.provisional`: `proxyStaffBizId`/staff ID can get a provisional auth URL.
-- `seal.sso`: Seal accepts the Hose provisional token and returns a bearer session.
-- `seal.whoami`: the Seal bearer can read current user and tenant.
-
-Do not expect tokens in the output; the command intentionally redacts or omits them. If a stage fails, report that stage and its error, then stop assuming later stages worked.
-
-### Diagnose one approval document
-
-Use when the user gives a 合思/易快报单号, Seal source document SN, source document ID, or asks why one approval did or did not pass.
-
-1. Search runs:
-
-```bash
-seal-home approval-runs search --query <document-or-trace-key> --limit 50
-```
-
-2. If a likely record is found, get bridge hints:
-
-```bash
-seal-home approval-runs bridge --sourceDocumentSN <sourceDocumentSN>
-```
-
-3. Report `status`, `taskMode`, `finalExecutionMode`, `recordId`, `simulationBatchId`, `langfuseTraceId`, and `langfuseSessionFallback`. If `langfuseTraceId` is absent, tell the caller to use the session fallback.
-
-### Summarize one day of approval runs
-
-Use explicit local date and timezone:
-
-```bash
-seal-home approval-runs summary --date YYYY-MM-DD --timezone Asia/Shanghai --limit 100
-```
-
-Report matched count, status counts, task mode counts, and the most relevant failed or simulated records. If `matched` is unexpectedly low, rerun with broader `limit` or targeted `query`.
-
-### Inspect a simulation batch
-
-```bash
-seal-home simulation batch-records <batchId>
-```
-
-Summarize count, statuses, source document identifiers, and bridge hints. For failures, preserve record IDs so another tool can inspect the trace.
-
-### Search approval knowledge
-
-Use for "which rule/document mentions X" or before changing rule/document content:
-
-```bash
-seal-home tool seal_approval_search --json '{"keywords":["关键词"],"matchMode":"any","maxResults":20}'
-```
-
-Use `areas` to narrow to `rules`, `documents`, or `preferences`. Separate CLI invocations are short-lived processes and do not share in-memory search caches. Use the local service as the restartable long-lived process for future cached workflows.
-
-### Update approval rules
-
-Write workflow:
-
-1. Read current rules with `seal_approval_rules_list` or `seal_approval_context_get`.
-2. Identify the exact rule ID or create payload.
-3. Present the intended change and ask for confirmation.
-4. Run `seal_approval_rule_create`, `seal_approval_rule_update`, or `seal_approval_rule_delete`.
-5. Read rules again to verify.
-6. Publish only when explicitly requested, using `seal_approval_rule_version_publish` with a clear `versionName`.
-
-### Update approval documents
-
-Write workflow:
-
-1. List or fetch the target document.
-2. Present the intended title/purpose/content/status/scenario/tag change.
-3. Ask for confirmation.
-4. Run `seal_approval_document_create` or `seal_approval_document_update`.
-5. Fetch the document again to verify.
-
-There is no dedicated delete command in the current CLI. If deactivation is intended and the API supports it, update with `enabled:false`.
-
-### Update style preferences
-
-Read first:
-
-```bash
-seal-home tool seal_approval_style_preferences_get
-```
-
-Then update only explicit fields:
-
-```bash
-seal-home tool seal_approval_style_preferences_update --json '{"tone":"...","language":"..."}'
-```
-
-Verify by reading again.
-
-## Important Fields
-
-- `sourceDocumentSN`: external source document number, often the easiest 合思/易快报 lookup key.
-- `sourceDocumentId`: external source document ID.
-- `status`: run status such as completed or failed.
-- `taskMode`: execution mode category such as assisted or simulation.
-- `finalExecutionMode`: final mode chosen by the approval agent.
-- `recordId`: Seal approval run record ID.
-- `simulationBatchId`: simulation batch identifier when the run came from a batch.
-- `langfuseTraceId`: direct Langfuse trace lookup key when present.
-- `langfuseSessionFallback`: fallback session key, usually `hosecloud-{sourceDocumentSN}`, when direct trace ID is absent.
-
-## CLI Patterns
-
-Read `references/cli.md` when you need the full tool list, parameter examples, or maintenance commands.
-
-Preferred command forms:
-
-```bash
-seal-home approval-runs summary --date 2026-06-09 --timezone Asia/Shanghai
-seal-home approval-runs pick --sn B26001887 --latest
+seal-home approval-runs pick --sn <sourceDocumentSN> --latest
+seal-home approval-runs pick --sn <sourceDocumentSN> --batch <batchId> --latest --fields recordId,status,aiDecision,aiSummary
 seal-home approval-runs get <recordId> --summary
+seal-home approval-runs get <recordId> --fields metadata,document.fields,result.summary
 seal-home approval-runs document-summary <recordId>
 seal-home approval-runs cited-rules <recordId>
 seal-home approval-runs attachments <recordId> --summary
 seal-home approval-runs result <recordId> --summary
+seal-home rules count --corp <corpId>
+seal-home rules list --corp <corpId> --summary
 seal-home rules get --version 16 --code '#0038'
-seal-home approval-runs url
-seal-home approval-runs url --sourceDocumentSN B26001887
-seal-home approval-runs bridge --sourceDocumentSN B26001887
-seal-home tool seal_approval_search --json '{"keywords":["差旅","发票"],"areas":["rules","documents"]}'
+seal-home rules get --record-id <recordId> --runtime-id rule-205
+seal-home tool seal_approval_search --json '{"keywords":["差旅","发票"],"areas":["rules"],"snippetOnly":true,"maxChars":500,"fields":["id","title","snippet"]}'
 ```
 
-## Output Handling
+## Important Fields
 
-CLI output is JSON on stdout. Parse JSON instead of scraping text. Keep broad responses compact: avoid `includeBridge true` unless trace/session bridge rows are needed.
+- `sourceDocumentSN`: external document number, often the easiest 合思/易快报 lookup key.
+- `sourceDocumentId`: external source document ID.
+- `recordId`: Seal approval run record ID.
+- `simulationBatchId`: simulation batch identifier.
+- `status`: run status.
+- `taskMode` / `finalExecutionMode`: execution mode information.
+- `ruleSetVersionNumber`: approval rule version used by a run.
+- `langfuseTraceId`: direct Langfuse trace lookup key.
+- `langfuseSessionFallback`: fallback session key, usually `hosecloud-{sourceDocumentSN}`.
 
-For date-based questions, use explicit dates and timezone. Default timezone is usually `Asia/Shanghai`; pass it explicitly when answering business questions.
+## References
+
+- `references/approval-run-lightweight.md`: 单号定位、字段裁剪、摘要、引用规则、单据摘要、附件摘要。
+- `references/rule-lightweight.md`: 规则 count/list summary、按版本/编号取单条规则、规则搜索裁剪。
+- `references/hose-enterprise-auth.md`: Hose 企业配置、认证诊断、授权链接。
+- `references/approval-attachment-trace.md`: 附件/发票/OCR/图片争议的 Langfuse 追踪工作流。
+- `references/cli.md`: 完整 CLI 命令清单。
 
 ## Safety
 
-Rule, document, style preference, and publish actions mutate Seal configuration. Before running write operations, make sure the target enterprise is clear and the requested payload is explicit. Prefer listing or fetching the current state before update/delete/publish.
-
-For public or shared use, assume the CLI runs locally with the user's own credentials. Do not send real `enterprises/*.json` files to GitHub, chat, logs, or tickets.
+Rule, document, style preference, and publish actions mutate Seal configuration. Make the target enterprise explicit, show the intended payload, and verify after the write. Never send real `enterprises/*.json` files, tokens, signed URLs, or full raw documents to GitHub, tickets, logs, or chat unless the user explicitly requests a safe export.
