@@ -195,6 +195,7 @@ These tools remain available to the CLI:
 - `seal_approval_run_cited_rules_get`: extract rules cited or matched by the AI result, including runtime ID/code, version, scope, strictness, analysis, result, and findings when present.
 - `seal_approval_run_document_summary_get`: return key document fields, invoice/attachment summary, AI result, and manual result.
 - `seal_approval_run_attachments_get`: return attachment and invoice file metadata for one run without the full document or rule result; use `summary:true` for the smallest list.
+- `seal_approval_run_attachment_dispute`: diagnose disputes where raw attachments contain missing keywords or clauses. It downloads nested `ossSignedUrl` attachment objects, extracts text for docx/PDF/text-like files when possible, reports keyword counts and short contexts, and omits signed URLs, full raw text, tokens, and local temporary paths.
 - `seal_approval_run_result_get`: return one run result, with `{"summary":true}` for decision, summary, risk point count, matched rule count, trace ID, and record ID only.
 - `seal_approval_run_url_get`: return the Hose enterprise assist URL, optionally with the original document URL for an approval run by `recordId`, `sourceDocumentSN`, or `sourceDocumentId`.
 - `seal_simulation_batch_records_get`: read records from one simulation batch via `api/v1/simulation/batch/{batchId}/records`.
@@ -202,7 +203,7 @@ These tools remain available to the CLI:
 
 For rule list commands, prefer `seal-home rules count` or `seal-home rules list --summary` before requesting full rule descriptions. `seal-home rules list` protects large outputs and asks for `--summary`, `--count`, or explicit `--full` when the response would be too large.
 
-For approval run detail commands, prefer `seal-home approval-runs pick --sn <单号> --latest`, `seal-home approval-runs get <recordId> --summary`, `seal-home approval-runs document-summary <recordId>`, `seal-home approval-runs cited-rules <recordId>`, `seal-home approval-runs attachments <recordId> --summary`, or `seal-home approval-runs result <recordId> --summary` before requesting the full record. CLI JSON output is protected by a 200KB default limit; use `--output-file` for large payloads or `--full` only when the full response is intentional. Hose provisional auth links are available with `seal-home auth hose-link --corp <corpId> --expire 7200`, which returns the unredacted `getProvisionalAuth` URL.
+For approval run detail commands, prefer `seal-home approval-runs pick --sn <单号> --latest`, `seal-home approval-runs get <recordId> --summary`, `seal-home approval-runs document-summary <recordId>`, `seal-home approval-runs cited-rules <recordId>`, `seal-home approval-runs attachments <recordId> --summary`, `seal-home approval-runs attachment-dispute --sn <单号> --keywords 关键词1,关键词2`, or `seal-home approval-runs result <recordId> --summary` before requesting the full record. CLI JSON output is protected by a 200KB default limit; use `--output-file` for large payloads or `--full` only when the full response is intentional. Hose provisional auth links are available with `seal-home auth hose-link --corp <corpId> --expire 7200`, which returns the unredacted `getProvisionalAuth` URL.
 
 ## Approval Run To Langfuse Bridge
 

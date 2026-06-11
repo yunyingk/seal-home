@@ -40,6 +40,11 @@ async function main() {
   const args = parseArgs(Bun.argv.slice(2));
   const [area, action, maybeName] = args.command;
 
+  if (area === "approval-runs" && action === "attachment-dispute" && args.options.help) {
+    printAttachmentDisputeHelp();
+    return;
+  }
+
   if (!area || area === "help" || args.options.help) {
     printHelp();
     return;
@@ -311,6 +316,16 @@ async function main() {
     await runTool("seal_approval_run_attachments_get", client, corp, {
       recordId,
       summary: booleanOption(args.options.summary)
+    }, outputOptions(args.options));
+    return;
+  }
+
+  if (area === "approval-runs" && action === "attachment-dispute") {
+    await runTool("seal_approval_run_attachment_dispute", client, corp, {
+      sn: stringOption(args.options.sn),
+      recordId: stringOption(args.options.recordId) ?? stringOption(args.options["record-id"]),
+      latest: booleanOption(args.options.latest) ?? true,
+      keywords: splitOption(args.options.keywords) ?? []
     }, outputOptions(args.options));
     return;
   }
@@ -1143,12 +1158,26 @@ Usage:
   seal-home approval-runs cited-rules <recordId>
   seal-home approval-runs document-summary <recordId>
   seal-home approval-runs attachments <recordId> [--summary]
+  seal-home approval-runs attachment-dispute --sn S26001948 --keywords 投标保证金,响应保证金,押金,比选保证金
+  seal-home approval-runs attachment-dispute --record-id <recordId> --keywords keyword1,keyword2
   seal-home approval-runs result <recordId> [--summary]
   seal-home approval-runs url
   seal-home approval-runs url <recordId>
   seal-home approval-runs url --sourceDocumentSN B26022501
   seal-home approval-runs bridge [--sourceDocumentSN B26001887]
   seal-home simulation batch-records <batchId>
+`);
+}
+
+function printAttachmentDisputeHelp() {
+  console.log(`seal-home approval-runs attachment-dispute
+
+Usage:
+  seal-home approval-runs attachment-dispute --sn <sourceDocumentSN> --keywords keyword1,keyword2 [--latest]
+  seal-home approval-runs attachment-dispute --record-id <recordId> --keywords keyword1,keyword2
+
+Output:
+  Compact JSON with run identity, attachment metadata, raw text keyword counts, short match contexts, and best-effort pipeline keyword checks. Signed URLs, full raw text, access tokens, refresh tokens, and local temporary paths are not printed.
 `);
 }
 
