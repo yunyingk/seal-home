@@ -5,6 +5,7 @@ import { getHoseEnterpriseUrl } from "../../core/auth/hose.js";
 import { CorpConfig } from "../../core/config/types.js";
 import { searchApprovalContent } from "./search.js";
 import type { ApprovalRule, ApprovalRun, RuleSetVersion } from "./types.js";
+import { diagnoseAttachmentDispute, parseKeywords } from "./attachment-dispute.js";
 
 type ToolContext = {
   corp: CorpConfig;
@@ -565,6 +566,25 @@ export const sealTools = [
     }
   },
   {
+    name: "seal_approval_run_attachment_dispute",
+    description: "诊断客户争议：原始 Word/PDF/文本附件是否包含关键词，以及运行流水线是否遗漏这些条款",
+    parameters: z.object({
+      sn: z.string().optional().describe("合思/易快报单号；按最新运行记录查询"),
+      recordId: z.string().optional().describe("Seal approval run record ID"),
+      latest: z.boolean().optional().describe("按 SN 查询时默认取最新记录"),
+      keywords: z.union([z.string(), z.array(z.string())]).describe("逗号分隔或数组形式的关键词")
+    }),
+    handler: async (
+      client: KyInstance,
+      params: { sn?: string; recordId?: string; latest?: boolean; keywords: string | string[] }
+    ) => diagnoseAttachmentDispute(client, {
+      sn: params.sn,
+      recordId: params.recordId,
+      latest: params.latest ?? true,
+      keywords: parseKeywords(params.keywords)
+    })
+  },
+  {
     name: "seal_approval_run_result_get",
     description: "返回审批运行结果摘要；summary=true 时只返回 decision、summary、风险点数量、命中规则数量、traceId 等",
     parameters: z.object({
@@ -782,6 +802,7 @@ const sealActionNames = [
   "seal_approval_run_cited_rules_get",
   "seal_approval_run_document_summary_get",
   "seal_approval_run_attachments_get",
+  "seal_approval_run_attachment_dispute",
   "seal_approval_run_result_get",
   "seal_approval_run_url_get",
   "seal_approval_run_pick",
@@ -810,6 +831,7 @@ const sealActionAliases: Record<string, (typeof sealActionNames)[number]> = {
   "runs.citedRules": "seal_approval_run_cited_rules_get",
   "runs.documentSummary": "seal_approval_run_document_summary_get",
   "runs.attachments": "seal_approval_run_attachments_get",
+  "runs.attachmentDispute": "seal_approval_run_attachment_dispute",
   "runs.result": "seal_approval_run_result_get",
   "runs.url": "seal_approval_run_url_get",
   "runs.pick": "seal_approval_run_pick",

@@ -53,6 +53,7 @@ seal-home approval-runs get <recordId> --fields metadata,document.fields,result.
 seal-home approval-runs document-summary <recordId>
 seal-home approval-runs cited-rules <recordId>
 seal-home approval-runs attachments <recordId> --summary
+seal-home approval-runs attachment-dispute --sn <sourceDocumentSN> --keywords 投标保证金,响应保证金,押金,比选保证金
 seal-home approval-runs result <recordId> --summary
 seal-home rules count --corp <corpId>
 seal-home rules list --corp <corpId> --summary

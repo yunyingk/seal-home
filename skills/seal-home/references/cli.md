@@ -32,6 +32,7 @@ seal-home approval-runs summary [--date YYYY-MM-DD] [--timezone Asia/Shanghai]
 seal-home approval-runs search [--query text] [--limit 20] [--includeBridge true]
 seal-home approval-runs get <recordId> [--fields metadata|document.fields,result.summary] [--output-file file.json]
 seal-home approval-runs attachments <recordId>
+seal-home approval-runs attachment-dispute --sn <sourceDocumentSN> --keywords keyword1,keyword2
 seal-home approval-runs result <recordId> [--summary]
 seal-home approval-runs url
 seal-home approval-runs url <recordId>
@@ -81,12 +82,14 @@ Approval run lightweight queries:
 - `seal-home approval-runs cited-rules <recordId>`
 - `seal-home approval-runs get <recordId> --fields document.fields,result.summary`
 - `seal-home approval-runs attachments <recordId> --summary`
+- `seal-home approval-runs attachment-dispute --sn <单号> --keywords 关键词1,关键词2`
 - `seal-home approval-runs result <recordId> --summary`
 - `seal_approval_run_get` with `fields`
 - `seal_approval_run_pick`
 - `seal_approval_run_cited_rules_get`
 - `seal_approval_run_document_summary_get`
 - `seal_approval_run_attachments_get`
+- `seal_approval_run_attachment_dispute`
 - `seal_approval_run_result_get` with `{"summary":true}`
 
 Approval knowledge documents:
