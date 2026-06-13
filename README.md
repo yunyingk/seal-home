@@ -1,7 +1,5 @@
 # seal-home
 
-Version: `0.3.3`
-
 Bun + TypeScript CLI and optional local service for pulling Seal enterprise approval context from provider credentials.
 
 The first provider is Hose/合思: `key`, `password`, `corpId`, `staffId`, and an optional Hose domain. The provider exchanges those credentials for a Seal enterprise session, then the Seal domain tools can read and maintain approval rules, approval documents, and approval style preferences.

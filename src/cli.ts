@@ -13,8 +13,8 @@ import { sealTools, type SealTool } from "./domains/seal/tools.js";
 import { CorpConfig } from "./core/config/types.js";
 import { clearCorpTokenCache } from "./core/auth/token-store.js";
 import { getHoseProvisionalAuthLink } from "./core/auth/hose.js";
+import { VERSION } from "./version.js";
 
-const VERSION = "0.3.3";
 const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const STATE_DIR = join(homedir(), ".config", "seal-home");
 const SERVICE_PID_FILE = join(STATE_DIR, "service.pid");

@@ -10,6 +10,7 @@ import { CorpContext } from "./core/config/manager.js";
 import { createSealClient } from "./core/http/factory.js";
 import { resolveLiveSealEnterpriseConfig } from "./domains/seal/source.js";
 import { findSealMcpTool, findSealTool, sealMcpTools } from "./domains/seal/tools.js";
+import { VERSION } from "./version.js";
 
 async function main() {
   const corps = loadCorpConfigs();
@@ -18,7 +19,7 @@ async function main() {
   const server = new Server(
     {
       name: "seal-home",
-      version: "0.3.3"
+      version: VERSION
     },
     {
       capabilities: {
