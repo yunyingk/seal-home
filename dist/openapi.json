@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "seal-home Wrapped API",
-    "version": "0.3.0",
+    "version": "0.3.3",
     "description": "HTTP contract for the seal-home wrapped backend API.\n\nThese endpoints describe the stable API that frontend developers and agents should use.\nThey are not the raw downstream Seal endpoints. seal-home is responsible for enterprise\nselection, source authentication, response compaction, and diagnostics-friendly fields.\n"
   },
   "servers": [

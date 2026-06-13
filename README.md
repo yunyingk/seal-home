@@ -1,6 +1,6 @@
 # seal-home
 
-Version: `0.3.0`
+Version: `0.3.3`
 
 Bun + TypeScript CLI and optional local service for pulling Seal enterprise approval context from provider credentials.
 

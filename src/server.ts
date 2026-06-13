@@ -18,7 +18,7 @@ async function main() {
   const server = new Server(
     {
       name: "seal-home",
-      version: "0.3.0"
+      version: "0.3.3"
     },
     {
       capabilities: {
