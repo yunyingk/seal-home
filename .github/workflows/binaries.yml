@@ -1,0 +1,112 @@
+name: Binaries
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type-check
+        run: bun run check
+
+      - name: Test
+        run: bun test
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x64
+            os: ubuntu-latest
+            ext: ""
+          - name: macos-arm64
+            os: macos-latest
+            ext: ""
+          - name: windows-x64
+            os: windows-latest
+            ext: ".exe"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Compile CLI
+        shell: bash
+        run: |
+          mkdir -p dist/bin
+          bun build --compile --outfile "dist/bin/seal-home-${{ matrix.name }}${{ matrix.ext }}" src/cli.ts
+
+      - name: Package artifact
+        shell: bash
+        run: |
+          cd dist/bin
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            7z a "seal-home-${{ matrix.name }}.zip" "seal-home-${{ matrix.name }}${{ matrix.ext }}"
+          else
+            tar -czf "seal-home-${{ matrix.name }}.tar.gz" "seal-home-${{ matrix.name }}${{ matrix.ext }}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: seal-home-${{ matrix.name }}
+          path: |
+            dist/bin/seal-home-${{ matrix.name }}.tar.gz
+            dist/bin/seal-home-${{ matrix.name }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish release assets
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: seal-home-*
+          merge-multiple: true
+
+      - name: Upload release assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --notes "Automated binary release for ${GITHUB_REF_NAME}."
+          gh release upload "${GITHUB_REF_NAME}" release-assets/* --clobber
